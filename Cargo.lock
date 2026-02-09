@@ -980,6 +980,7 @@ dependencies = [
  "crossterm",
  "dotenv",
  "ratatui",
+ "serde",
  "serde_json",
  "tokio",
 ]

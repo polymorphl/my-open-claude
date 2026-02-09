@@ -11,24 +11,47 @@ pub use app::{App, ChatMessage, ConfirmPopup};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use std::io;
-use tokio::runtime::Handle;
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
 
 use serde_json::Value;
+use tokio::runtime::Runtime;
 
+use crate::core::config::Config;
 use crate::core::llm;
 
 use constants::SUGGESTIONS;
 use draw::draw;
 use text::line_count_before_last;
 
-/// Run the TUI loop. Uses `handle` to run async chat from a blocking thread.
-pub fn run(handle: Handle) -> io::Result<()> {
+/// Guard that restores terminal state on drop (including on panic).
+struct TerminalGuard;
+
+impl TerminalGuard {
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
+        let _ = disable_raw_mode();
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+    }
+}
+
+/// Run the TUI loop. Uses a dedicated Tokio runtime for async chat calls.
+pub fn run(config: Arc<Config>) -> io::Result<()> {
     use crossterm::terminal::{
         Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
         enable_raw_mode,
     };
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
+
+    let _guard = TerminalGuard::new();
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -37,10 +60,26 @@ pub fn run(handle: Handle) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(crate::core::config::model());
-    // Full API conversation history so the model keeps context across turns.
+    let rt = Runtime::new().map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("Failed to create runtime: {}", e))
+    })?;
+
+    let mut app = App::new(config.model_id.clone());
     let mut api_messages: Option<Vec<Value>> = None;
+    let mut pending_chat: Option<(mpsc::Receiver<String>, mpsc::Receiver<Result<llm::ChatResult, String>>)> = None;
+
     loop {
+        if let Some((ref progress_rx, ref result_rx)) = pending_chat {
+            while let Ok(msg) = progress_rx.try_recv() {
+                app.push_tool_log(msg);
+            }
+            if let Ok(result) = result_rx.try_recv() {
+                app.set_thinking(false);
+                handle_chat_result(&mut app, &mut api_messages, result, true);
+                pending_chat = None;
+            }
+        }
+
         terminal.draw(|f| draw(f, &mut app, f.area()))?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
@@ -49,32 +88,15 @@ pub fn run(handle: Handle) -> io::Result<()> {
                     continue;
                 }
 
-                // When popup is shown, only handle y/n/Enter
                 if let Some(popup) = app.confirm_popup.take() {
                     let confirmed = matches!(key.code, KeyCode::Char('y') | KeyCode::Char('Y'));
-                    let cancelled = matches!(key.code, KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Enter);
+                    let cancelled =
+                        matches!(key.code, KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Enter);
                     if confirmed || cancelled {
-                        let result = handle.block_on(llm::chat_resume(popup.state, confirmed));
+                        let result =
+                            rt.block_on(llm::chat_resume(config.as_ref(), popup.state, confirmed));
                         app.set_thinking(false);
-                        match result {
-                            Ok(llm::ChatResult::Complete { content, tool_log, messages }) => {
-                                api_messages = Some(messages);
-                                for line in tool_log {
-                                    app.push_tool_log(line);
-                                }
-                                app.push_assistant(content);
-                                let cw = app.last_content_width.unwrap_or(80);
-                                app.scroll = line_count_before_last(&app.messages, cw);
-                            }
-                            Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
-                                app.confirm_popup = Some(app::ConfirmPopup { command, state });
-                            }
-                            Err(e) => {
-                                app.push_assistant(format!("Error: {}", e));
-                                let cw = app.last_content_width.unwrap_or(80);
-                                app.scroll = line_count_before_last(&app.messages, cw);
-                            }
-                        }
+                        handle_chat_result(&mut app, &mut api_messages, result, false);
                     } else {
                         app.confirm_popup = Some(popup);
                     }
@@ -91,41 +113,37 @@ pub fn run(handle: Handle) -> io::Result<()> {
                     }
                     (KeyCode::Enter, _) => {
                         let input = app.input.trim().to_string();
-                        if input.is_empty() {
-                            // Do not send when input is empty
-                        } else {
+                        if !input.is_empty() && pending_chat.is_none() {
                             app.input.clear();
                             app.push_user(&input);
-                            app.scroll = usize::MAX;
+                            app.scroll_to_bottom();
                             app.set_thinking(true);
-                            terminal.draw(|f| draw(f, &mut app, f.area()))?;
-                            let mode = SUGGESTIONS[app.selected_suggestion];
-                            let result = handle.block_on(llm::chat(
-                                &input,
-                                mode,
-                                None, // TUI mode: get NeedsConfirmation and show popup
-                                api_messages.clone(),
-                            ));
-                            app.set_thinking(false);
-                            match result {
-                                Ok(llm::ChatResult::Complete { content, tool_log, messages }) => {
-                                    api_messages = Some(messages);
-                                    for line in tool_log {
-                                        app.push_tool_log(line);
-                                    }
-                                    app.push_assistant(content);
-                                    let cw = app.last_content_width.unwrap_or(80);
-                                    app.scroll = line_count_before_last(&app.messages, cw);
-                                }
-                                Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
-                                    app.confirm_popup = Some(app::ConfirmPopup { command, state });
-                                }
-                                Err(e) => {
-                                    app.push_assistant(format!("Error: {}", e));
-                                    let cw = app.last_content_width.unwrap_or(80);
-                                    app.scroll = line_count_before_last(&app.messages, cw);
-                                }
-                            }
+
+                            let (progress_tx, progress_rx) = mpsc::channel();
+                            let (result_tx, result_rx) = mpsc::channel();
+                            let config = config.clone();
+                            let mode = SUGGESTIONS[app.selected_suggestion].to_string();
+                            let prev_messages = api_messages.clone();
+
+                            thread::spawn(move || {
+                                let rt = Runtime::new().expect("runtime");
+                                let on_progress: llm::OnProgress = Box::new(move |s| {
+                                    let _ = progress_tx.send(s.to_string());
+                                });
+                                let result = rt
+                                    .block_on(llm::chat(
+                                        config.as_ref(),
+                                        &input,
+                                        &mode,
+                                        None,
+                                        prev_messages,
+                                        Some(on_progress),
+                                    ))
+                                    .map_err(|e| e.to_string());
+                                let _ = result_tx.send(result);
+                            });
+
+                            pending_chat = Some((progress_rx, result_rx));
                         }
                     }
                     (KeyCode::Backspace, _) => {
@@ -148,4 +166,38 @@ pub fn run(handle: Handle) -> io::Result<()> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
+}
+
+fn handle_chat_result(
+    app: &mut App,
+    api_messages: &mut Option<Vec<Value>>,
+    result: Result<llm::ChatResult, impl std::fmt::Display>,
+    tool_log_already_streamed: bool,
+) {
+    let cw = app.last_content_width.unwrap_or(80);
+    match result {
+        Ok(llm::ChatResult::Complete {
+            content,
+            tool_log,
+            messages,
+        }) => {
+            *api_messages = Some(messages);
+            if tool_log_already_streamed {
+                app.clear_progress_after_last_user();
+            } else {
+                for line in tool_log {
+                    app.push_tool_log(line);
+                }
+            }
+            app.push_assistant(content);
+            app.scroll = app::ScrollPosition::Line(line_count_before_last(&app.messages, cw));
+        }
+        Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
+            app.confirm_popup = Some(app::ConfirmPopup { command, state });
+        }
+        Err(e) => {
+            app.push_assistant(format!("Error: {}", e));
+            app.scroll = app::ScrollPosition::Line(line_count_before_last(&app.messages, cw));
+        }
+    }
 }

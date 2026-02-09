@@ -18,10 +18,23 @@ pub struct ConfirmPopup {
     pub state: ConfirmState,
 }
 
+/// Scroll position: either a specific line index, or "at bottom" (follow new content).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ScrollPosition {
+    Line(usize),
+    Bottom,
+}
+
+impl Default for ScrollPosition {
+    fn default() -> Self {
+        Self::Line(0)
+    }
+}
+
 pub struct App {
     pub(super) messages: Vec<ChatMessage>,
     pub(super) input: String,
-    pub(super) scroll: usize,
+    pub(super) scroll: ScrollPosition,
     pub(super) last_max_scroll: usize,
     /// Index of the selected suggestion (Tab to cycle).
     pub(super) selected_suggestion: usize,
@@ -38,7 +51,7 @@ impl App {
         Self {
             messages: vec![],
             input: String::new(),
-            scroll: 0,
+            scroll: ScrollPosition::default(),
             last_max_scroll: 0,
             selected_suggestion: 0,
             confirm_popup: None,
@@ -63,24 +76,48 @@ impl App {
         if thinking {
             self.messages.push(ChatMessage::Thinking);
         } else {
-            self.messages.pop(); // remove "Thinking"
+            // Remove Thinking by value (may not be last if we streamed tool_log during thinking)
+            self.messages.retain(|m| !matches!(m, ChatMessage::Thinking));
         }
     }
 
-    /// Must be called before scroll_up/scroll_down when at bottom (scroll == usize::MAX).
-    pub(super) fn materialize_scroll(&mut self) {
-        if self.scroll == usize::MAX {
-            self.scroll = self.last_max_scroll;
+    /// Remove verbose progress (ToolLog) shown during thinking. Keeps history up to last User.
+    pub(super) fn clear_progress_after_last_user(&mut self) {
+        if let Some(last_user_idx) = self.messages.iter().rposition(|m| matches!(m, ChatMessage::User(_))) {
+            self.messages.truncate(last_user_idx + 1);
         }
+    }
+
+    /// Must be called before scroll_up/scroll_down when at bottom.
+    pub(super) fn materialize_scroll(&mut self) {
+        if self.scroll == ScrollPosition::Bottom {
+            self.scroll = ScrollPosition::Line(self.last_max_scroll);
+        }
+    }
+
+    pub(super) fn scroll_to_bottom(&mut self) {
+        self.scroll = ScrollPosition::Bottom;
     }
 
     pub(super) fn scroll_down(&mut self, n: usize) {
         self.materialize_scroll();
-        self.scroll = (self.scroll + n).min(self.last_max_scroll);
+        if let ScrollPosition::Line(pos) = self.scroll {
+            self.scroll = ScrollPosition::Line((pos + n).min(self.last_max_scroll));
+        }
     }
 
     pub(super) fn scroll_up(&mut self, n: usize) {
         self.materialize_scroll();
-        self.scroll = self.scroll.saturating_sub(n);
+        if let ScrollPosition::Line(pos) = self.scroll {
+            self.scroll = ScrollPosition::Line(pos.saturating_sub(n));
+        }
+    }
+
+    /// Resolve scroll position to a concrete line index.
+    pub(super) fn scroll_line(&self) -> usize {
+        match self.scroll {
+            ScrollPosition::Line(n) => n.min(self.last_max_scroll),
+            ScrollPosition::Bottom => self.last_max_scroll,
+        }
     }
 }

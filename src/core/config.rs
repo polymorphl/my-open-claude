@@ -1,24 +1,44 @@
 use std::env;
-use std::process;
 
 use async_openai::config::OpenAIConfig;
 
-pub fn load() -> OpenAIConfig {
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub openai_config: OpenAIConfig,
+    pub model_id: String,
+}
+
+#[derive(Debug)]
+pub enum ConfigError {
+    MissingApiKey,
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::MissingApiKey => write!(f, "OPENROUTER_API_KEY is not set"),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+/// Load configuration from environment. Returns an error if API key is missing.
+pub fn load() -> Result<Config, ConfigError> {
     let base_url = env::var("OPENROUTER_BASE_URL")
         .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_string());
 
-    let api_key = env::var("OPENROUTER_API_KEY").unwrap_or_else(|_| {
-        eprintln!("OPENROUTER_API_KEY is not set");
-        process::exit(1);
-    });
+    let api_key = env::var("OPENROUTER_API_KEY").map_err(|_| ConfigError::MissingApiKey)?;
 
-    OpenAIConfig::new()
+    let model_id =
+        env::var("OPENROUTER_MODEL").unwrap_or_else(|_| "anthropic/claude-haiku-4.5".to_string());
+
+    let openai_config = OpenAIConfig::new()
         .with_api_base(base_url)
-        .with_api_key(api_key)
-}
+        .with_api_key(api_key);
 
-/// Model ID used for chat (e.g. "anthropic/claude-haiku-4.5").
-/// Reads OPENROUTER_MODEL from env, default "anthropic/claude-haiku-4.5".
-pub fn model() -> String {
-    env::var("OPENROUTER_MODEL").unwrap_or_else(|_| "anthropic/claude-haiku-4.5".to_string())
+    Ok(Config {
+        openai_config,
+        model_id,
+    })
 }

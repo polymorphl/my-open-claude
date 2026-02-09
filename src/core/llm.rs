@@ -3,7 +3,9 @@ use async_openai::Client;
 use serde_json::{Value, json};
 
 use crate::confirm::ConfirmDestructive;
+use crate::core::config::Config;
 use crate::core::tools;
+use crate::core::tools::Tool;
 
 /// Interaction mode: "Ask" = explanations only (no write/bash), "Build" = all tools.
 pub fn is_ask_mode(mode: &str) -> bool {
@@ -36,6 +38,21 @@ pub struct ConfirmState {
     pub(super) command: String,
 }
 
+fn make_complete(
+    content: &str,
+    tool_log: &[String],
+    messages: &[Value],
+) -> ChatResult {
+    ChatResult::Complete {
+        content: content.to_string(),
+        tool_log: tool_log.to_vec(),
+        messages: messages.to_vec(),
+    }
+}
+
+/// Callback for progress updates during chat (e.g. "Calling API...", "→ Bash: ls").
+pub type OnProgress = Box<dyn Fn(&str) + Send>;
+
 /// Run an agent loop that:
 /// - starts with the user's prompt (and optional previous conversation)
 /// - repeatedly calls the model
@@ -44,50 +61,67 @@ pub struct ConfirmState {
 /// - stops when the model responds without tool calls
 /// If `confirm_destructive` is Some (CLI mode), destructive commands use the callback.
 /// If None (TUI mode), returns `NeedsConfirmation` so the TUI can show a popup.
+/// If `on_progress` is Some, it is called with verbose updates during processing.
 pub async fn chat(
+    config: &Config,
     prompt: &str,
     mode: &str,
     confirm_destructive: Option<ConfirmDestructive>,
     previous_messages: Option<Vec<Value>>,
+    on_progress: Option<OnProgress>,
 ) -> Result<ChatResult, Box<dyn std::error::Error>> {
-    let config = crate::core::config::load();
-    let client = Client::with_config(config);
+    let client = Client::with_config(config.openai_config.clone());
 
-    // Start from previous conversation (if any) and append the new user message.
     let mut messages = previous_messages.unwrap_or_default();
     messages.push(json!({
         "role": "user",
         "content": prompt,
     }));
 
-    let tools = tools::definitions();
+    let tools_defs = tools::definitions();
+    let tools_list = tools::all();
     let mut tool_log: Vec<String> = Vec::new();
 
-    run_agent_loop(&client, &tools, &mut messages, &mut tool_log, mode, &confirm_destructive).await
+    run_agent_loop(
+        &client,
+        config,
+        &tools_defs,
+        &tools_list,
+        &mut messages,
+        &mut tool_log,
+        mode,
+        &confirm_destructive,
+        on_progress.as_deref(),
+    )
+    .await
 }
 
 async fn run_agent_loop(
     client: &Client<OpenAIConfig>,
-    tools: &[Value],
+    config: &Config,
+    tools_defs: &[Value],
+    tools_list: &[Box<dyn tools::Tool>],
     messages: &mut Vec<Value>,
     tool_log: &mut Vec<String>,
     mode: &str,
     confirm_destructive: &Option<ConfirmDestructive>,
+    on_progress: Option<&(dyn Fn(&str) + Send)>,
 ) -> Result<ChatResult, Box<dyn std::error::Error>> {
-    let model_id = crate::core::config::model();
     loop {
+        if let Some(ref progress) = on_progress {
+            progress("Calling API...");
+        }
         let response: Value = client
             .chat()
             .create_byot(json!({
-                "model": model_id.clone(),
+                "model": config.model_id,
                 "messages": messages,
                 "tool_choice": "auto",
-                "tools": tools,
+                "tools": tools_defs,
             }))
             .await
             .map_err(|e| {
                 let s = e.to_string();
-                // When the API returns 401/403 etc., the body is in the error string; show a clearer message
                 if s.contains("401") && s.contains("cookie auth") {
                     return Box::new(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
@@ -108,149 +142,125 @@ async fn run_agent_loop(
             })?;
 
         let assistant_message = &response["choices"][0]["message"];
-
-        // Record the assistant's response in the conversation history.
         messages.push(assistant_message.clone());
 
-        // Check if the assistant requested any tools.
         let tool_calls_opt = assistant_message
             .get("tool_calls")
             .and_then(|v| v.as_array());
 
-        // If there are no tool calls, we're done – return the final content and full history.
         let Some(tool_calls) = tool_calls_opt else {
             let content = assistant_message["content"]
                 .as_str()
                 .unwrap_or("")
                 .to_string();
-            return Ok(ChatResult::Complete {
-                content,
-                tool_log: tool_log.clone(),
-                messages: messages.clone(),
-            });
+            return Ok(make_complete(&content, tool_log, messages));
         };
 
-        // If tool_calls exists but is empty, also treat this as completion.
         if tool_calls.is_empty() {
             let content = assistant_message["content"]
                 .as_str()
                 .unwrap_or("")
                 .to_string();
-            return Ok(ChatResult::Complete {
-                content,
-                tool_log: tool_log.clone(),
-                messages: messages.clone(),
-            });
+            return Ok(make_complete(&content, tool_log, messages));
         }
 
-        // Execute each requested tool and append its result to the messages.
         for tool_call in tool_calls {
             let id = tool_call["id"].as_str().unwrap_or_default().to_string();
             let function = &tool_call["function"];
             let name = function["name"].as_str().unwrap_or_default();
             let args_str = function["arguments"].as_str().unwrap_or("{}");
 
-            // Parse the arguments JSON string.
-            let args: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+            let args: Value = serde_json::from_str(args_str).unwrap_or_else(|e| {
+                eprintln!("Warning: failed to parse tool arguments for {}: {}", name, e);
+                json!({})
+            });
 
-            // Log for verbose display (before execution).
-            let args_preview = match name {
-                n if n == tools::bash::NAME => args
-                    .get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                n if n == tools::read::NAME || n == tools::write::NAME => args
-                    .get("file_path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                _ => String::new(),
-            };
-            tool_log.push(format!("→ {}: {}", name, args_preview));
+            let args_preview = tools_list
+                .iter()
+                .find(|t| t.name() == name)
+                .map(|t| t.args_preview(&args))
+                .unwrap_or_default();
+            let log_line = format!("→ {}: {}", name, args_preview);
+            tool_log.push(log_line.clone());
+            if let Some(ref progress) = on_progress {
+                progress(&log_line);
+            }
 
-            // In Ask mode: allow Read (for explaining), refuse only Write and Bash.
-            let result = if is_ask_mode(mode) && (name == tools::write::NAME || name == tools::bash::NAME) {
-                "Mode Ask : création/modification de fichiers et exécution de commandes désactivées. Utilisez uniquement l'outil Read pour lire des fichiers, puis répondez par une explication."
-                    .to_string()
+            let ask_mode_disabled = "Ask mode: file creation/modification and command execution are disabled. Use only the Read tool to read files, then respond with an explanation.";
+
+            const WRITE_NAME: &str = "Write";
+            const BASH_NAME: &str = "Bash";
+
+            let result = if is_ask_mode(mode)
+                && (name == WRITE_NAME || name == BASH_NAME)
+            {
+                ask_mode_disabled.to_string()
             } else {
-                match name {
-                    n if n == tools::bash::NAME => {
-                        if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
-                            if tools::bash::is_destructive(command) {
-                                if let Some(cb) = confirm_destructive {
-                                    let confirmed = cb(command);
-                                    if !confirmed {
-                                        "Command cancelled (destructive command not confirmed)."
-                                            .to_string()
+                match tools_list.iter().find(|t| t.name() == name) {
+                    Some(tool) => {
+                        if name == BASH_NAME {
+                            if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
+                                if tools::is_destructive(command) {
+                                    if let Some(cb) = confirm_destructive {
+                                        let confirmed = cb(command);
+                                        if !confirmed {
+                                            "Command cancelled (destructive command not confirmed)."
+                                                .to_string()
+                                        } else {
+                                            tool.execute(&args)
+                                                .unwrap_or_else(|e| format!("Error: {}", e))
+                                        }
                                     } else {
-                                        tools::bash::execute(command)
+                                        return Ok(ChatResult::NeedsConfirmation {
+                                            command: command.to_string(),
+                                            state: ConfirmState {
+                                                messages: messages.clone(),
+                                                tool_log: tool_log.clone(),
+                                                tool_call_id: id.clone(),
+                                                mode: mode.to_string(),
+                                                tools: tools_defs.to_vec(),
+                                                command: command.to_string(),
+                                            },
+                                        });
                                     }
                                 } else {
-                                    // TUI mode: return NeedsConfirmation so the TUI can show a popup
-                                    return Ok(ChatResult::NeedsConfirmation {
-                                        command: command.to_string(),
-                                        state: ConfirmState {
-                                            messages: messages.clone(),
-                                            tool_log: tool_log.clone(),
-                                            tool_call_id: id.clone(),
-                                            mode: mode.to_string(),
-                                            tools: tools.to_vec(),
-                                            command: command.to_string(),
-                                        },
-                                    });
+                                    tool.execute(&args)
+                                        .unwrap_or_else(|e| format!("Error: {}", e))
                                 }
                             } else {
-                                tools::bash::execute(command)
+                                "Error: missing command argument".to_string()
                             }
                         } else {
-                            "Error: missing command argument".to_string()
+                            tool.execute(&args)
+                                .unwrap_or_else(|e| format!("Error: {}", e))
                         }
                     }
-                    n if n == tools::read::NAME => {
-                        if let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) {
-                            tools::read::execute(file_path)
-                        } else {
-                            "Error: missing file_path argument".to_string()
-                        }
-                    }
-                    n if n == tools::write::NAME => {
-                        match (
-                            args.get("file_path").and_then(|v| v.as_str()),
-                            args.get("content").and_then(|v| v.as_str()),
-                        ) {
-                            (Some(file_path), Some(content)) => {
-                                tools::write::execute(file_path, content)
-                            }
-                            _ => "Error: missing file_path or content argument".to_string(),
-                        }
-                    }
-                    _ => format!("Error: unknown tool '{}'", name),
+                    None => format!("Error: unknown tool '{}'", name),
                 }
             };
 
-            // Add the tool result to the conversation history.
             messages.push(json!({
                 "role": "tool",
                 "tool_call_id": id,
                 "content": result,
             }));
         }
-        // Loop continues: next iteration sends updated `messages` back to the model.
     }
 }
 
 /// Resume the chat loop after user confirmed or cancelled a destructive command.
 /// Call this when you receive `NeedsConfirmation` and the user has answered.
 pub async fn chat_resume(
+    config: &Config,
     state: ConfirmState,
     confirmed: bool,
 ) -> Result<ChatResult, Box<dyn std::error::Error>> {
-    let config = crate::core::config::load();
-    let client = Client::with_config(config);
+    let client = Client::with_config(config.openai_config.clone());
 
+    let bash_tool = tools::BashTool;
     let result = if confirmed {
-        tools::bash::execute(&state.command)
+        bash_tool.execute(&json!({ "command": state.command }))
+            .unwrap_or_else(|e| format!("Error: {}", e))
     } else {
         "Command cancelled (destructive command not confirmed).".to_string()
     };
@@ -263,13 +273,19 @@ pub async fn chat_resume(
     }));
 
     let mut tool_log = state.tool_log;
+    let tools_defs = state.tools;
+    let tools_list = tools::all();
+
     run_agent_loop(
         &client,
-        &state.tools,
+        config,
+        &tools_defs,
+        &tools_list,
         &mut messages,
         &mut tool_log,
         &state.mode,
         &None, // No callback on resume; if another destructive command, return NeedsConfirmation again
+        None,  // No progress callback on resume
     )
     .await
 }
