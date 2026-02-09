@@ -1,5 +1,7 @@
 # My Open Claude
 
+![my-open-claude TUI](screenshot.png)
+
 LLM-powered coding assistant written in Rust. It understands code and performs actions through tool calls, with a CLI and an interactive TUI chat mode.
 
 ## Features
