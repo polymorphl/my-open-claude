@@ -16,3 +16,9 @@ pub fn load() -> OpenAIConfig {
         .with_api_base(base_url)
         .with_api_key(api_key)
 }
+
+/// Model ID used for chat (e.g. "anthropic/claude-haiku-4.5").
+/// Reads OPENROUTER_MODEL from env, default "anthropic/claude-haiku-4.5".
+pub fn model() -> String {
+    env::var("OPENROUTER_MODEL").unwrap_or_else(|_| "anthropic/claude-haiku-4.5".to_string())
+}

@@ -36,12 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The TUI is blocking and requires a Tokio runtime for async calls.
     // We run it in spawn_blocking with the current runtime handle.
     let handle = tokio::runtime::Handle::current();
-    tokio::task::spawn_blocking(move || {
+    let join_result: Result<std::io::Result<()>, tokio::task::JoinError> = tokio::task::spawn_blocking(move || {
         // The main runtime handle can be used from spawn_blocking
         // since spawn_blocking runs in the Tokio runtime context.
         tui::run(handle)
     })
-    .await
+    .await;
+    join_result
     .map_err(|_| {
         Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
