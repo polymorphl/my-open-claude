@@ -27,10 +27,14 @@ pub struct App {
     pub(super) selected_suggestion: usize,
     /// When set, show confirmation popup and ignore normal input until y/n.
     pub(super) confirm_popup: Option<ConfirmPopup>,
+    /// Model ID displayed in the header (e.g. "anthropic/claude-haiku-4.5").
+    pub(super) model_name: String,
+    /// Content width from last draw; used to compute scroll-to-start when adding new messages.
+    pub(super) last_content_width: Option<usize>,
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(model_name: String) -> Self {
         Self {
             messages: vec![],
             input: String::new(),
@@ -38,6 +42,8 @@ impl App {
             last_max_scroll: 0,
             selected_suggestion: 0,
             confirm_popup: None,
+            model_name,
+            last_content_width: None,
         }
     }
 

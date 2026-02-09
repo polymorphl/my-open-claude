@@ -74,11 +74,12 @@ async fn run_agent_loop(
     mode: &str,
     confirm_destructive: &Option<ConfirmDestructive>,
 ) -> Result<ChatResult, Box<dyn std::error::Error>> {
+    let model_id = crate::core::config::model();
     loop {
         let response: Value = client
             .chat()
             .create_byot(json!({
-                "model": "anthropic/claude-haiku-4.5",
+                "model": model_id.clone(),
                 "messages": messages,
                 "tool_choice": "auto",
                 "tools": tools,

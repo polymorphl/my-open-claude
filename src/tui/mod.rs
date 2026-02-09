@@ -19,6 +19,7 @@ use crate::core::llm;
 
 use constants::SUGGESTIONS;
 use draw::draw;
+use text::line_count_before_last;
 
 /// Run the TUI loop. Uses `handle` to run async chat from a blocking thread.
 pub fn run(handle: Handle) -> io::Result<()> {
@@ -36,7 +37,7 @@ pub fn run(handle: Handle) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new();
+    let mut app = App::new(crate::core::config::model());
     // Full API conversation history so the model keeps context across turns.
     let mut api_messages: Option<Vec<Value>> = None;
     loop {
@@ -62,13 +63,16 @@ pub fn run(handle: Handle) -> io::Result<()> {
                                     app.push_tool_log(line);
                                 }
                                 app.push_assistant(content);
-                                app.scroll = usize::MAX;
+                                let cw = app.last_content_width.unwrap_or(80);
+                                app.scroll = line_count_before_last(&app.messages, cw);
                             }
                             Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
                                 app.confirm_popup = Some(app::ConfirmPopup { command, state });
                             }
                             Err(e) => {
                                 app.push_assistant(format!("Error: {}", e));
+                                let cw = app.last_content_width.unwrap_or(80);
+                                app.scroll = line_count_before_last(&app.messages, cw);
                             }
                         }
                     } else {
@@ -110,13 +114,18 @@ pub fn run(handle: Handle) -> io::Result<()> {
                                         app.push_tool_log(line);
                                     }
                                     app.push_assistant(content);
+                                    let cw = app.last_content_width.unwrap_or(80);
+                                    app.scroll = line_count_before_last(&app.messages, cw);
                                 }
                                 Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
                                     app.confirm_popup = Some(app::ConfirmPopup { command, state });
                                 }
-                                Err(e) => app.push_assistant(format!("Error: {}", e)),
+                                Err(e) => {
+                                    app.push_assistant(format!("Error: {}", e));
+                                    let cw = app.last_content_width.unwrap_or(80);
+                                    app.scroll = line_count_before_last(&app.messages, cw);
+                                }
                             }
-                            app.scroll = usize::MAX;
                         }
                     }
                     (KeyCode::Backspace, _) => {

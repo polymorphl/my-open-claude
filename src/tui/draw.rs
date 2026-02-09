@@ -8,10 +8,14 @@ use ratatui::widgets::{
     Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
 };
 use std::env;
+use std::time::Instant;
 
 use super::app::{App, ChatMessage};
-use super::constants::{ACCENT, SUGGESTIONS};
+use super::constants::{ACCENT, LOGO_IDLE, LOGO_THINKING, SUGGESTIONS};
 use super::text::{parse_markdown_inline, wrap_message};
+
+/// Start time for header animation phase (thinking spinner).
+static HEADER_START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
 pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
@@ -27,7 +31,7 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     let history_area = chunks[1];
     let input_section = chunks[2];
 
-    draw_header(f, header_area);
+    draw_header(f, app, header_area);
     draw_history(f, app, history_area);
     draw_input_section(f, app, input_section);
 
@@ -36,17 +40,69 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn draw_header(f: &mut Frame, area: Rect) {
-    let logo = Line::from(vec![
-        Span::styled(
-            "my-open-claude ",
-            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("·", Style::default().fg(Color::DarkGray)),
-        Span::raw(" assistant"),
-    ]);
-    let logo_block = Paragraph::new(logo).alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(logo_block, area);
+fn is_thinking(app: &App) -> bool {
+    app.messages
+        .last()
+        .map(|m| matches!(m, ChatMessage::Thinking))
+        .unwrap_or(false)
+}
+
+/// Max width for model name in header; longer names are truncated with "…".
+const MODEL_HEADER_WIDTH: u16 = 28;
+
+fn draw_header(f: &mut Frame, app: &App, area: Rect) {
+    let header_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(MODEL_HEADER_WIDTH),
+        ])
+        .split(area);
+
+    let logo_area = header_chunks[0];
+    let title_area = header_chunks[1];
+    let model_area = header_chunks[2];
+
+    // Logo: minimal symbol, animated spinner when LLM is thinking
+    let logo_symbol = if is_thinking(app) {
+        let start = HEADER_START.get_or_init(Instant::now);
+        let phase = start.elapsed().as_millis() as usize;
+        let frame = (phase / 80) % LOGO_THINKING.len();
+        LOGO_THINKING[frame]
+    } else {
+        LOGO_IDLE
+    };
+    let logo_line = Line::from(Span::styled(
+        format!("{} ", logo_symbol),
+        Style::default().fg(ACCENT),
+    ));
+    let logo_para = Paragraph::new(logo_line);
+    f.render_widget(logo_para, logo_area);
+
+    // Title: my-open-claude · assistant
+    let title = Line::from(vec![Span::styled(
+        "my-open-claude ",
+        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+    )]);
+    let title_block = Paragraph::new(title).alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(title_block, title_area);
+
+    // Model name (right of title): truncate with "…" if too long, show end of string
+    let max_len = MODEL_HEADER_WIDTH as usize;
+    let model_display = if app.model_name.chars().count() > max_len {
+        let chars: Vec<char> = app.model_name.chars().collect();
+        let start = chars.len().saturating_sub(max_len.saturating_sub(1));
+        format!("…{}", chars[start..].iter().collect::<String>())
+    } else {
+        app.model_name.clone()
+    };
+    let model_line = Line::from(Span::styled(
+        model_display,
+        Style::default().fg(Color::DarkGray),
+    ));
+    let model_para = Paragraph::new(model_line).alignment(ratatui::layout::Alignment::Right);
+    f.render_widget(model_para, model_area);
 }
 
 fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
@@ -58,6 +114,7 @@ fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let scrollbar_area = history_chunks[1];
     let wrap_width = text_area.width as usize;
     let content_width = wrap_width.saturating_sub(2); // indentation "  "
+    app.last_content_width = Some(content_width);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     for msg in &app.messages {
@@ -181,9 +238,10 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
         Paragraph::new(suggestions_line).alignment(ratatui::layout::Alignment::Center);
     f.render_widget(suggestions_para, suggestions_area);
 
+    // "Enter send  ↑↓ scroll  Ctrl+C quit" needs ~38 chars
     let bottom_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(36)])
+        .constraints([Constraint::Min(1), Constraint::Length(38)])
         .split(shortcuts_area);
     let path_area = bottom_chunks[0];
     let shortcuts_area_right = bottom_chunks[1];
@@ -208,11 +266,11 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
 
     let shortcuts = Line::from(vec![
         Span::styled("Enter ", Style::default().fg(Color::DarkGray)),
-        Span::raw("envoyer"),
+        Span::raw("send"),
         Span::styled("  ↑↓ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("défiler"),
+        Span::raw("scroll"),
         Span::styled("  Ctrl+C ", Style::default().fg(Color::DarkGray)),
-        Span::raw("quitter"),
+        Span::raw("quit"),
     ]);
     let shortcuts_para = Paragraph::new(shortcuts).alignment(ratatui::layout::Alignment::Right);
     f.render_widget(shortcuts_para, shortcuts_area_right);
@@ -238,7 +296,10 @@ fn draw_confirm_popup(f: &mut Frame, area: Rect, command: &str) {
         Line::from(""),
         Line::from(vec![
             Span::raw("Commande : "),
-            Span::styled(command, Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                command,
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(""),
         Line::from(vec![
