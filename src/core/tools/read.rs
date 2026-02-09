@@ -1,11 +1,14 @@
 use serde_json::{json, Value};
 use std::fs;
 
+/// Tool name as sent to the API and used for dispatch.
+pub const NAME: &str = "Read";
+
 pub fn definition() -> Value {
     json!({
         "type": "function",
         "function": {
-            "name": "Read",
+            "name": NAME,
             "description": "Read and return the contents of a file",
             "parameters": {
                 "type": "object",
