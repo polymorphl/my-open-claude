@@ -18,12 +18,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     let args = Args::parse();
 
+    let config = match core::config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
+
     if let Some(prompt) = args.prompt {
         let result = core::llm::chat(
+            &config,
             &prompt,
             "Build",
             Some(confirm::default_confirm()),
             None,
+            None, // No progress callback in CLI mode
         )
         .await?;
         if let core::llm::ChatResult::Complete { content, .. } = result {
@@ -33,22 +43,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Default behavior: open the TUI (interactive chat).
-    // The TUI is blocking and requires a Tokio runtime for async calls.
-    // We run it in spawn_blocking with the current runtime handle.
-    let handle = tokio::runtime::Handle::current();
-    let join_result: Result<std::io::Result<()>, tokio::task::JoinError> = tokio::task::spawn_blocking(move || {
-        // The main runtime handle can be used from spawn_blocking
-        // since spawn_blocking runs in the Tokio runtime context.
-        tui::run(handle)
-    })
-    .await;
+    // The TUI runs in a blocking thread with its own Tokio runtime for chat calls,
+    // avoiding block_on on the main runtime's worker threads.
+    let config = std::sync::Arc::new(config);
+    let config_clone = config.clone();
+    let join_result: Result<std::io::Result<()>, tokio::task::JoinError> =
+        tokio::task::spawn_blocking(move || tui::run(config_clone))
+            .await;
     join_result
-    .map_err(|_| {
-        Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "TUI thread panicked",
-        )) as Box<dyn std::error::Error>
-    })??;
+        .map_err(|_| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "TUI thread panicked",
+            )) as Box<dyn std::error::Error>
+        })??;
 
     Ok(())
 }

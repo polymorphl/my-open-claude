@@ -64,7 +64,6 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let title_area = header_chunks[1];
     let model_area = header_chunks[2];
 
-    // Logo: minimal symbol, animated spinner when LLM is thinking
     let logo_symbol = if is_thinking(app) {
         let start = HEADER_START.get_or_init(Instant::now);
         let phase = start.elapsed().as_millis() as usize;
@@ -80,7 +79,6 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let logo_para = Paragraph::new(logo_line);
     f.render_widget(logo_para, logo_area);
 
-    // Title: my-open-claude · assistant
     let title = Line::from(vec![Span::styled(
         "my-open-claude ",
         Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
@@ -88,7 +86,6 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let title_block = Paragraph::new(title).alignment(ratatui::layout::Alignment::Center);
     f.render_widget(title_block, title_area);
 
-    // Model name (right of title): truncate with "…" if too long, show end of string
     let max_len = MODEL_HEADER_WIDTH as usize;
     let model_display = if app.model_name.chars().count() > max_len {
         let chars: Vec<char> = app.model_name.chars().collect();
@@ -105,6 +102,28 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(model_para, model_area);
 }
 
+/// Draw a user or assistant message block (label + wrapped content).
+fn draw_message_block(
+    lines: &mut Vec<Line<'static>>,
+    label: impl Into<String>,
+    content: &str,
+    content_width: usize,
+) {
+    lines.push(Line::from(vec![
+        Span::styled(label.into(), Style::default().fg(Color::DarkGray)),
+        Span::styled("→ ", Style::default().fg(ACCENT)),
+    ]));
+    for chunk in wrap_message(content, content_width) {
+        if chunk.is_empty() {
+            lines.push(Line::from(Span::raw("")));
+        } else {
+            let mut spans = vec![Span::raw("  ")];
+            spans.extend(parse_markdown_inline(&chunk));
+            lines.push(Line::from(spans));
+        }
+    }
+}
+
 fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let history_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -113,41 +132,17 @@ fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let text_area = history_chunks[0];
     let scrollbar_area = history_chunks[1];
     let wrap_width = text_area.width as usize;
-    let content_width = wrap_width.saturating_sub(2); // indentation "  "
+    let content_width = wrap_width.saturating_sub(2);
     app.last_content_width = Some(content_width);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     for msg in &app.messages {
         match msg {
             ChatMessage::User(s) => {
-                lines.push(Line::from(vec![
-                    Span::styled("Vous ", Style::default().fg(Color::DarkGray)),
-                    Span::styled("→ ", Style::default().fg(ACCENT)),
-                ]));
-                for chunk in wrap_message(s, content_width) {
-                    if chunk.is_empty() {
-                        lines.push(Line::from(Span::raw("")));
-                    } else {
-                        let mut spans = vec![Span::raw("  ")];
-                        spans.extend(parse_markdown_inline(&chunk));
-                        lines.push(Line::from(spans));
-                    }
-                }
+                draw_message_block(&mut lines, "You ", s, content_width);
             }
             ChatMessage::Assistant(s) => {
-                lines.push(Line::from(vec![
-                    Span::styled("Assistant ", Style::default().fg(Color::DarkGray)),
-                    Span::styled("→ ", Style::default().fg(ACCENT)),
-                ]));
-                for chunk in wrap_message(s, content_width) {
-                    if chunk.is_empty() {
-                        lines.push(Line::from(Span::raw("")));
-                    } else {
-                        let mut spans = vec![Span::raw("  ")];
-                        spans.extend(parse_markdown_inline(&chunk));
-                        lines.push(Line::from(spans));
-                    }
-                }
+                draw_message_block(&mut lines, "Assistant ", s, content_width);
             }
             ChatMessage::ToolLog(s) => {
                 lines.push(Line::from(Span::styled(
@@ -157,7 +152,7 @@ fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
             }
             ChatMessage::Thinking => {
                 lines.push(Line::from(vec![Span::styled(
-                    "  Réflexion... ",
+                    "  Thinking... ",
                     Style::default()
                         .fg(Color::DarkGray)
                         .add_modifier(Modifier::ITALIC),
@@ -170,7 +165,7 @@ fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let visible = text_area.height as usize;
     let max_scroll = total_lines.saturating_sub(visible.min(1));
     app.last_max_scroll = max_scroll;
-    let scroll_pos = app.scroll.min(max_scroll);
+    let scroll_pos = app.scroll_line().min(max_scroll);
     let start = scroll_pos;
     let end = (start + visible).min(total_lines);
     let visible_lines: Vec<Line> = lines.into_iter().skip(start).take(end - start).collect();
@@ -238,7 +233,6 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
         Paragraph::new(suggestions_line).alignment(ratatui::layout::Alignment::Center);
     f.render_widget(suggestions_para, suggestions_area);
 
-    // "Enter send  ↑↓ scroll  Ctrl+C quit" needs ~38 chars
     let bottom_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(1), Constraint::Length(38)])
@@ -276,7 +270,6 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
     f.render_widget(shortcuts_para, shortcuts_area_right);
 }
 
-/// Centered popup area (percentage of parent).
 fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
     let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
@@ -290,12 +283,12 @@ fn draw_confirm_popup(f: &mut Frame, area: Rect, command: &str) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ACCENT))
-        .title(" ⚠ Commande destructive ");
+        .title(" ⚠ Destructive command ");
 
     let text = vec![
         Line::from(""),
         Line::from(vec![
-            Span::raw("Commande : "),
+            Span::raw("Command: "),
             Span::styled(
                 command,
                 Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
@@ -304,9 +297,9 @@ fn draw_confirm_popup(f: &mut Frame, area: Rect, command: &str) {
         Line::from(""),
         Line::from(vec![
             Span::styled("y ", Style::default().fg(ACCENT)),
-            Span::raw("confirmer  "),
+            Span::raw("confirm  "),
             Span::styled("n ", Style::default().fg(Color::DarkGray)),
-            Span::raw("annuler"),
+            Span::raw("cancel"),
         ]),
     ];
     let paragraph = Paragraph::new(text)

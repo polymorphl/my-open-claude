@@ -1,8 +1,6 @@
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::process::Command;
-
-/// Tool name as sent to the API and used for dispatch.
-pub const NAME: &str = "Bash";
 
 /// Command prefixes (normalized, lowercase) that are considered destructive and require confirmation.
 const DESTRUCTIVE_PREFIXES: &[&str] = &[
@@ -14,6 +12,11 @@ const DESTRUCTIVE_PREFIXES: &[&str] = &[
     "mv ",    // can overwrite or remove
     "unlink ",
 ];
+
+#[derive(Debug, Deserialize)]
+pub struct BashArgs {
+    pub command: String,
+}
 
 fn normalized_command(cmd: &str) -> String {
     cmd.trim()
@@ -34,53 +37,69 @@ pub fn is_destructive(command: &str) -> bool {
         .any(|&prefix| n.starts_with(prefix))
 }
 
-pub fn definition() -> Value {
-    json!({
-        "type": "function",
-        "function": {
-            "name": NAME,
-            "description": "Execute a shell command",
-            "parameters": {
-                "type": "object",
-                "required": ["command"],
-                "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "The command to execute"
+pub struct BashTool;
+
+impl super::Tool for BashTool {
+    fn name(&self) -> &'static str {
+        "Bash"
+    }
+
+    fn definition(&self) -> Value {
+        json!({
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": "Execute a shell command",
+                "parameters": {
+                    "type": "object",
+                    "required": ["command"],
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The command to execute"
+                        }
                     }
                 }
             }
-        }
-    })
-}
+        })
+    }
 
-pub fn execute(command: &str) -> String {
-    // Execute the command using the shell
-    let output = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", command])
-            .output()
-    } else {
-        Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .output()
-    };
+    fn args_preview(&self, args: &Value) -> String {
+        args.get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
 
-    match output {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+    fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
+        let parsed: BashArgs = serde_json::from_value(args.clone())
+            .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-            // Combine stdout and stderr, with stderr first if both exist
-            if !stderr.is_empty() && !stdout.is_empty() {
-                format!("{}\n{}", stderr, stdout)
-            } else if !stderr.is_empty() {
-                stderr.to_string()
-            } else {
-                stdout.to_string()
+        let output = if cfg!(target_os = "windows") {
+            Command::new("cmd")
+                .args(["/C", &parsed.command])
+                .output()
+        } else {
+            Command::new("sh")
+                .arg("-c")
+                .arg(&parsed.command)
+                .output()
+        };
+
+        match output {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+
+                if !stderr.is_empty() && !stdout.is_empty() {
+                    Ok(format!("{}\n{}", stderr, stdout))
+                } else if !stderr.is_empty() {
+                    Ok(stderr.to_string())
+                } else {
+                    Ok(stdout.to_string())
+                }
             }
+            Err(e) => Err(Box::new(e)),
         }
-        Err(e) => format!("Error executing command: {}", e),
     }
 }
