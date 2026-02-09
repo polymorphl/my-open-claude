@@ -1,5 +1,6 @@
 use async_openai::{Client, config::OpenAIConfig};
 use clap::Parser;
+use dotenv::dotenv;
 use serde_json::{Value, json};
 use std::{env, process};
 
@@ -12,6 +13,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok();
     let args = Args::parse();
 
     let base_url = env::var("OPENROUTER_BASE_URL")
@@ -32,13 +34,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let response: Value = client
         .chat()
         .create_byot(json!({
-            "messages": [
-                {
-                    "role": "user",
-                    "content": args.prompt
+          "model": "anthropic/claude-haiku-4.5",
+          "messages": [{"role": "user", "content": args.prompt}],
+          "tools": [{
+              "type": "function",
+              "function": {
+                "name": "Read",
+                "description": "Read and return the contents of a file",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "file_path": {
+                      "type": "string",
+                      "description": "The path to the file to read"
+                    }
+                  },
+                  "required": ["file_path"]
                 }
-            ],
-            "model": "anthropic/claude-haiku-4.5",
+              }
+            }]
         }))
         .await?;
 
