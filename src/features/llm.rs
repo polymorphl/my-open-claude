@@ -73,7 +73,13 @@ pub async fn chat(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
             let args: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
 
             // Execute the requested tool.
-            let result = if name == "Read" {
+            let result = if name == "Bash" {
+                if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
+                    tools::bash::execute(command)
+                } else {
+                    "Error: missing command argument".to_string()
+                }
+            } else if name == "Read" {
                 if let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) {
                     tools::read::execute(file_path)
                 } else {
