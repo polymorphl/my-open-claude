@@ -72,12 +72,20 @@ pub async fn chat(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
             // Parse the arguments JSON string.
             let args: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
 
-            // Currently we only support the "Read" tool.
+            // Execute the requested tool.
             let result = if name == "Read" {
                 if let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) {
                     tools::read::execute(file_path)
                 } else {
                     "Error: missing file_path argument".to_string()
+                }
+            } else if name == "Write" {
+                match (
+                    args.get("file_path").and_then(|v| v.as_str()),
+                    args.get("content").and_then(|v| v.as_str()),
+                ) {
+                    (Some(file_path), Some(content)) => tools::write::execute(file_path, content),
+                    _ => "Error: missing file_path or content argument".to_string(),
                 }
             } else {
                 // Unknown tool – return an error message to the model.
