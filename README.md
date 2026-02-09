@@ -23,6 +23,16 @@ and uncomment the relevant code, and submit to pass the first stage:
 codecrafters submit
 ```
 
+# Configuration
+
+The application uses environment variables for API keys and other settings. Use a `.env` file in the project root:
+
+1. Copy `env.example` to `.env`:
+   ```sh
+   cp env.example .env
+   ```
+2. Edit `.env` and fill in the required values (e.g. `OPENROUTER_API_KEY`). See the comments in `env.example` for details.
+
 # Stage 2 & beyond
 
 Note: This section is for stages 2 and beyond.
