@@ -2,9 +2,6 @@ mod features;
 
 use clap::Parser;
 use dotenv::dotenv;
-use serde_json::Value;
-
-use features::tools::ResponseOutput;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -20,14 +17,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("Logs from your program will appear here!");
 
-    let response: Value = features::llm::chat(&args.prompt).await?;
-
-    if let Some(output) = features::tools::execute_tool_call(&response) {
-        match output {
-            ResponseOutput::FileContents(s) => print!("{}", s),
-            ResponseOutput::Text(s) => println!("{}", s),
-        }
-    }
+    let final_answer: String = features::llm::chat(&args.prompt).await?;
+    println!("{}", final_answer);
 
     Ok(())
 }
