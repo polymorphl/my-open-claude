@@ -198,6 +198,12 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                                     let _ = opener::open(CREDITS_URL);
                                 }
                             }
+                            MouseEventKind::ScrollUp => {
+                                app.scroll_up(3);
+                            }
+                            MouseEventKind::ScrollDown => {
+                                app.scroll_down(3);
+                            }
                             _ => {}
                         }
                     }

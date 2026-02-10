@@ -20,23 +20,40 @@ use super::text::{parse_markdown_inline, wrap_message};
 /// Start time for header animation phase (thinking spinner).
 static HEADER_START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
+/// Width of the centered input when in welcome (no conversation) mode.
+const WELCOME_INPUT_WIDTH: u16 = 64;
+
 pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Min(3),
-            Constraint::Length(6),
-        ])
-        .split(area);
+    let is_welcome = app.messages.is_empty();
 
-    let header_area = chunks[0];
-    let history_area = chunks[1];
-    let input_section = chunks[2];
-
-    draw_header(f, app, header_area);
-    draw_history(f, app, history_area);
-    draw_input_section(f, app, input_section);
+    if is_welcome {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2),
+                Constraint::Min(0),
+                Constraint::Length(10),
+                Constraint::Min(0),
+                Constraint::Length(2),
+            ])
+            .flex(Flex::Center)
+            .split(area);
+        draw_header(f, app, chunks[0]);
+        draw_welcome_center(f, app, chunks[2]);
+        draw_bottom_bar(f, app, chunks[4]);
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2),
+                Constraint::Min(3),
+                Constraint::Length(6),
+            ])
+            .split(area);
+        draw_header(f, app, chunks[0]);
+        draw_history(f, app, chunks[1]);
+        draw_input_section(f, app, chunks[2]);
+    }
 
     if let Some(ref popup) = app.confirm_popup {
         draw_confirm_popup(f, area, &popup.command);
@@ -58,6 +75,9 @@ const MODEL_HEADER_WIDTH: u16 = 28;
 /// Width for credits display in header (e.g. "$12.50" or "—" when loading).
 const CREDITS_HEADER_WIDTH: u16 = 12;
 
+/// Title text for header (used for centering).
+const TITLE_TEXT: &str = "my-open-claude ";
+
 fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let header_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -70,7 +90,6 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
         .split(area);
 
     let logo_area = header_chunks[0];
-    let title_area = header_chunks[1];
     let model_area = header_chunks[2];
     let credits_area = header_chunks[3];
 
@@ -89,11 +108,19 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let logo_para = Paragraph::new(logo_line);
     f.render_widget(logo_para, logo_area);
 
+    // Center title in the full header width (not just the middle chunk).
+    let title_len = TITLE_TEXT.len() as u16;
+    let title_area = Rect {
+        x: area.x + area.width.saturating_sub(title_len) / 2,
+        y: area.y,
+        width: title_len.min(area.width),
+        height: area.height,
+    };
     let title = Line::from(vec![Span::styled(
-        "my-open-claude ",
+        TITLE_TEXT,
         Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
     )]);
-    let title_block = Paragraph::new(title).alignment(ratatui::layout::Alignment::Center);
+    let title_block = Paragraph::new(title);
     f.render_widget(title_block, title_area);
 
     let max_len = MODEL_HEADER_WIDTH as usize;
@@ -207,6 +234,128 @@ fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     f.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }
 
+/// Welcome screen: centered title, input, and suggestions (OpenCode-style).
+fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
+    let inner_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(area);
+
+    let _spacer1 = inner_chunks[0];
+    let title_area = inner_chunks[1];
+    let _spacer2 = inner_chunks[2];
+    let input_area_outer = inner_chunks[3];
+    let suggestions_area = inner_chunks[4];
+    let _spacer3 = inner_chunks[5];
+
+    // Big centered title.
+    let title = Line::from(vec![Span::styled(
+        TITLE_TEXT,
+        Style::default()
+            .fg(ACCENT)
+            .add_modifier(Modifier::BOLD),
+    )]);
+    let title_para = Paragraph::new(title)
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(title_para, title_area);
+
+    // Centered input with constrained width.
+    let input_width = WELCOME_INPUT_WIDTH.min(area.width);
+    let input_area = Rect {
+        x: area.x + area.width.saturating_sub(input_width) / 2,
+        y: input_area_outer.y,
+        width: input_width,
+        height: input_area_outer.height,
+    };
+    let input_content = if app.input.is_empty() {
+        Span::styled("Ask anything... ", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::raw(app.input.as_str())
+    };
+    let input_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+    let inner = input_block.inner(input_area);
+    let input_paragraph = Paragraph::new(Line::from(input_content))
+        .block(input_block)
+        .style(Style::default().fg(Color::White));
+    f.render_widget(input_paragraph, input_area);
+    let cx = inner.x + app.input.len().min(inner.width as usize) as u16;
+    let cy = input_area.y + 1;
+    f.set_cursor_position(Position::new(cx, cy));
+
+    // Centered suggestions.
+    let suggestion_spans: Vec<Span> = SUGGESTIONS
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let selected = i == app.selected_suggestion;
+            Span::styled(
+                format!(" {} ", s),
+                if selected {
+                    Style::default().fg(Color::Black).bg(ACCENT)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                },
+            )
+        })
+        .collect();
+    let suggestions_line = Line::from(suggestion_spans);
+    let suggestions_para =
+        Paragraph::new(suggestions_line).alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(suggestions_para, suggestions_area);
+}
+
+/// Bottom bar: path on left, shortcuts on right.
+fn draw_bottom_bar(f: &mut Frame, _app: &mut App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(1), Constraint::Length(72)])
+        .split(area);
+    let path_area = chunks[0];
+    let shortcuts_area = chunks[1];
+
+    let path_display = env::current_dir()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .unwrap_or_else(|| "?".to_string());
+    let max_path_len = path_area.width as usize;
+    let path_display = if path_display.chars().count() > max_path_len && max_path_len > 2 {
+        let tail: String = path_display.chars().rev().take(max_path_len - 1).collect();
+        format!("…{}", tail.chars().rev().collect::<String>())
+    } else {
+        path_display
+    };
+    let path_line = Line::from(Span::styled(
+        path_display,
+        Style::default().fg(Color::DarkGray),
+    ));
+    let path_para = Paragraph::new(path_line).alignment(ratatui::layout::Alignment::Left);
+    f.render_widget(path_para, path_area);
+
+    let shortcuts = Line::from(vec![
+        Span::styled("Enter ", Style::default().fg(Color::DarkGray)),
+        Span::raw("send"),
+        Span::styled("  ↑↓ ", Style::default().fg(Color::DarkGray)),
+        Span::raw("scroll"),
+        Span::styled("  Alt+M/F2 ", Style::default().fg(Color::DarkGray)),
+        Span::raw("model"),
+        Span::styled("  credits ", Style::default().fg(Color::DarkGray)),
+        Span::raw("(click) "),
+        Span::styled("  Ctrl+C ", Style::default().fg(Color::DarkGray)),
+        Span::raw("quit"),
+    ]);
+    let shortcuts_para = Paragraph::new(shortcuts).alignment(ratatui::layout::Alignment::Right);
+    f.render_widget(shortcuts_para, shortcuts_area);
+}
+
 fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
     let input_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -258,45 +407,7 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
         Paragraph::new(suggestions_line).alignment(ratatui::layout::Alignment::Center);
     f.render_widget(suggestions_para, suggestions_area);
 
-    let bottom_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(72)])
-        .split(shortcuts_area);
-    let path_area = bottom_chunks[0];
-    let shortcuts_area_right = bottom_chunks[1];
-
-    let path_display = env::current_dir()
-        .ok()
-        .and_then(|p| p.to_str().map(String::from))
-        .unwrap_or_else(|| "?".to_string());
-    let max_path_len = path_area.width as usize;
-    let path_display = if path_display.chars().count() > max_path_len && max_path_len > 2 {
-        let tail: String = path_display.chars().rev().take(max_path_len - 1).collect();
-        format!("…{}", tail.chars().rev().collect::<String>())
-    } else {
-        path_display
-    };
-    let path_line = Line::from(Span::styled(
-        path_display,
-        Style::default().fg(Color::DarkGray),
-    ));
-    let path_para = Paragraph::new(path_line).alignment(ratatui::layout::Alignment::Left);
-    f.render_widget(path_para, path_area);
-
-    let shortcuts = Line::from(vec![
-        Span::styled("Enter ", Style::default().fg(Color::DarkGray)),
-        Span::raw("send"),
-        Span::styled("  ↑↓ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("scroll"),
-        Span::styled("  Alt+M/F2 ", Style::default().fg(Color::DarkGray)),
-        Span::raw("model"),
-        Span::styled("  credits ", Style::default().fg(Color::DarkGray)),
-        Span::raw("(click) "),
-        Span::styled("  Ctrl+C ", Style::default().fg(Color::DarkGray)),
-        Span::raw("quit"),
-    ]);
-    let shortcuts_para = Paragraph::new(shortcuts).alignment(ratatui::layout::Alignment::Right);
-    f.render_widget(shortcuts_para, shortcuts_area_right);
+    draw_bottom_bar(f, app, shortcuts_area);
 }
 
 fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
