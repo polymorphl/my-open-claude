@@ -2,7 +2,9 @@
 
 use crate::core::llm::ConfirmState;
 use crate::core::models::ModelInfo;
+use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
+use std::time::Instant;
 
 /// Messages displayed in the history (user or assistant).
 #[derive(Clone)]
@@ -60,6 +62,14 @@ pub struct App {
     pub(super) model_selector: Option<ModelSelectorState>,
     /// Content width from last draw; used to compute scroll-to-start when adding new messages.
     pub(super) last_content_width: Option<usize>,
+    /// Credit balance: (total_credits, total_usage). Fetched on startup, refreshed every 30 min.
+    pub(super) credit_data: Option<(f64, f64)>,
+    /// Rect of credits widget in header; used for click detection and hover.
+    pub(super) credits_header_rect: Option<Rect>,
+    /// When credits were last successfully fetched; for 30-min refresh.
+    pub(super) credits_last_fetched_at: Option<Instant>,
+    /// Mouse is over credits area; used for cursor style.
+    pub(super) hovering_credits: bool,
 }
 
 impl App {
@@ -75,6 +85,10 @@ impl App {
             current_model_id: model_id,
             model_selector: None,
             last_content_width: None,
+            credit_data: None,
+            credits_header_rect: None,
+            credits_last_fetched_at: None,
+            hovering_credits: false,
         }
     }
 

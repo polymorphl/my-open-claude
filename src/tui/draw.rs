@@ -55,20 +55,24 @@ fn is_thinking(app: &App) -> bool {
 
 /// Max width for model name in header; longer names are truncated with "…".
 const MODEL_HEADER_WIDTH: u16 = 28;
+/// Width for credits display in header (e.g. "$12.50" or "—" when loading).
+const CREDITS_HEADER_WIDTH: u16 = 12;
 
-fn draw_header(f: &mut Frame, app: &App, area: Rect) {
+fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let header_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Length(2),
             Constraint::Min(0),
             Constraint::Length(MODEL_HEADER_WIDTH),
+            Constraint::Length(CREDITS_HEADER_WIDTH),
         ])
         .split(area);
 
     let logo_area = header_chunks[0];
     let title_area = header_chunks[1];
     let model_area = header_chunks[2];
+    let credits_area = header_chunks[3];
 
     let logo_symbol = if is_thinking(app) {
         let start = HEADER_START.get_or_init(Instant::now);
@@ -106,6 +110,21 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     ));
     let model_para = Paragraph::new(model_line).alignment(ratatui::layout::Alignment::Right);
     f.render_widget(model_para, model_area);
+
+    let credits_display = match &app.credit_data {
+        Some((total, used)) => {
+            let balance = (*total - *used).max(0.0);
+            format!("${:.2}", balance)
+        }
+        None => "—".to_string(),
+    };
+    let credits_line = Line::from(Span::styled(
+        credits_display,
+        Style::default().fg(ACCENT).add_modifier(Modifier::UNDERLINED),
+    ));
+    let credits_para = Paragraph::new(credits_line).alignment(ratatui::layout::Alignment::Right);
+    f.render_widget(credits_para, credits_area);
+    app.credits_header_rect = Some(credits_area);
 }
 
 /// Draw a user or assistant message block (label + wrapped content).
@@ -241,7 +260,7 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
 
     let bottom_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(56)])
+        .constraints([Constraint::Min(1), Constraint::Length(72)])
         .split(shortcuts_area);
     let path_area = bottom_chunks[0];
     let shortcuts_area_right = bottom_chunks[1];
@@ -271,6 +290,8 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
         Span::raw("scroll"),
         Span::styled("  Alt+M/F2 ", Style::default().fg(Color::DarkGray)),
         Span::raw("model"),
+        Span::styled("  credits ", Style::default().fg(Color::DarkGray)),
+        Span::raw("(click) "),
         Span::styled("  Ctrl+C ", Style::default().fg(Color::DarkGray)),
         Span::raw("quit"),
     ]);
