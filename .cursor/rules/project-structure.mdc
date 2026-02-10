@@ -49,9 +49,6 @@ src/
     │   └── popups.rs    # Confirm popup, model selector popup
     ├── constants.rs     # UI constants (suggestions, colors)
     └── text.rs          # Text formatting and wrapping
-
-tests/                   # Integration tests
-└── integration.rs       # Multi-module tests
 ```
 
 ## Dependency Rules
@@ -72,7 +69,6 @@ tests/                   # Integration tests
 | Event handling (keyboard, mouse) | `tui/handlers/` (confirm, model_selector, input) |
 | App state, message structures | `tui/app.rs` |
 | CLI parsing, orchestration | `main.rs` |
-| Integration tests | `tests/` |
 
 ## Rust Conventions
 
@@ -81,8 +77,3 @@ tests/                   # Integration tests
 - Document modules with `//!` at the top of the file.
 - Shared helpers stay in the relevant module or a dedicated submodule.
 - If a file exceeds ~400 lines, extract logic into a submodule.
-
-## Testing
-
-- **Unit tests**: `#[cfg(test)]` in each module, or `tests/module_name.rs`.
-- **Integration tests**: `tests/` at project root.
