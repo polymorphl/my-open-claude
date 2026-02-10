@@ -21,7 +21,7 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 ## Installation
 
 ```sh
-git clone https://github.com/<your-username>/my-open-claude.git
+git clone https://github.com/polymorphl/my-open-claude.git
 cd my-open-claude
 cargo build --release
 ```
@@ -48,8 +48,8 @@ The app relies on environment variables. Use a `.env` file in the project root:
 
 | Usage | Linux | macOS | Windows |
 |-------|-------|-------|---------|
-| Config (last selected model) | `~/.config/io/<your-username>/my-open-claude/` | `~/Library/Application Support/io.<your-username>.my-open-claude/` | `%APPDATA%\io\<your-username>\my-open-claude\` |
-| Cache (models list, 24h TTL) | `~/.cache/io/<your-username>/my-open-claude/models.json` | `~/Library/Caches/io.<your-username>.my-open-claude/models.json` | `%LOCALAPPDATA%\io\<your-username>\my-open-claude\Cache\models.json` |
+| Config (last selected model) | `~/.config/io/polymorphl/my-open-claude/` | `~/Library/Application Support/io.polymorphl.my-open-claude/` | `%APPDATA%\io\polymorphl\my-open-claude\` |
+| Cache (models list, 24h TTL) | `~/.cache/io/polymorphl/my-open-claude/models.json` | `~/Library/Caches/io.polymorphl.my-open-claude/models.json` | `%LOCALAPPDATA%\io\polymorphl\my-open-claude\Cache\models.json` |
 
 ## Usage
 
