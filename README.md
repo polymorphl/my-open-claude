@@ -11,6 +11,7 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 - **Tool calling**: OpenAI-compatible API (read, write, bash, etc.)
 - **OpenRouter**: use models via the OpenRouter API (or other OpenAI-compatible backends)
 - **Model selector**: choose from tool-capable models (Alt+M / F2), with persisted selection
+- **Credit balance**: OpenRouter balance displayed in the header; click to open your account settings
 
 ## Prerequisites
 
@@ -66,6 +67,10 @@ cargo run
 cargo run -- -p "Explain what this project does"
 ```
 
+### Credit balance
+
+The header shows your OpenRouter credit balance (total minus usage). Click it to open your credits page. Balance is fetched on startup and refreshed every 30 minutes. Requires a Management API key; regular keys may see "—" instead.
+
 ### Model selection
 
 - Press **Alt+M** (or **F2**, or **Option+M** on macOS) to open the model selector.
@@ -76,10 +81,8 @@ cargo run -- -p "Explain what this project does"
 ## Project structure
 
 - `src/main.rs` — entry point, CLI parsing, TUI or prompt mode launch
-- `src/core/` — LLM logic, config, agent loop, tools (read, write, bash), model fetching
-- `src/core/models.rs` — fetch models from OpenRouter (tool support), filter by name/id
-- `src/core/models_cache.rs` — 24h cache for models list
-- `src/core/model_info.rs` — `ModelInfo` type for display and selection
-- `src/core/persistence.rs` — persist last selected model
-- `src/tui/` — terminal UI (app, drawing, text handling)
-- `src/confirm.rs` — confirmation before executing actions
+- `src/core/` — business logic: config, credits, confirm, persistence, LLM (agent loop, tools), models (fetch, cache)
+- `src/core/llm/` — chat, agent loop, tool execution, streaming
+- `src/core/models/` — model discovery, 24h cache, filtering
+- `src/core/tools/` — read, write, bash
+- `src/tui/` — terminal UI: app state, handlers (key/mouse), draw (header, history, input, popups)
