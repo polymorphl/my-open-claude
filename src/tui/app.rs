@@ -1,6 +1,8 @@
 //! TUI application state: messages, input, scroll, suggestions.
 
 use crate::core::llm::ConfirmState;
+use crate::core::models::ModelInfo;
+use ratatui::widgets::ListState;
 
 /// Messages displayed in the history (user or assistant).
 #[derive(Clone)]
@@ -16,6 +18,16 @@ pub enum ChatMessage {
 pub struct ConfirmPopup {
     pub command: String,
     pub state: ConfirmState,
+}
+
+/// State for the model selector popup.
+pub struct ModelSelectorState {
+    pub models: Vec<ModelInfo>,
+    pub selected_index: usize,
+    pub list_state: ListState,
+    pub fetch_error: Option<String>,
+    /// Filter query (case-insensitive search on model id/name).
+    pub filter: String,
 }
 
 /// Scroll position: either a specific line index, or "at bottom" (follow new content).
@@ -40,14 +52,18 @@ pub struct App {
     pub(super) selected_suggestion: usize,
     /// When set, show confirmation popup and ignore normal input until y/n.
     pub(super) confirm_popup: Option<ConfirmPopup>,
-    /// Model ID displayed in the header (e.g. "anthropic/claude-haiku-4.5").
+    /// Model ID displayed in the header and used for chat (e.g. "anthropic/claude-haiku-4.5").
     pub(super) model_name: String,
+    /// Same as model_name; used for API calls.
+    pub(super) current_model_id: String,
+    /// When set, show model selector popup (Alt+M).
+    pub(super) model_selector: Option<ModelSelectorState>,
     /// Content width from last draw; used to compute scroll-to-start when adding new messages.
     pub(super) last_content_width: Option<usize>,
 }
 
 impl App {
-    pub fn new(model_name: String) -> Self {
+    pub fn new(model_id: String, model_name: String) -> Self {
         Self {
             messages: vec![],
             input: String::new(),
@@ -56,6 +72,8 @@ impl App {
             selected_suggestion: 0,
             confirm_popup: None,
             model_name,
+            current_model_id: model_id,
+            model_selector: None,
             last_content_width: None,
         }
     }

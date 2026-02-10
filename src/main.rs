@@ -29,6 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(prompt) = args.prompt {
         let result = core::llm::chat(
             &config,
+            &config.model_id,
             &prompt,
             "Build",
             Some(confirm::default_confirm()),

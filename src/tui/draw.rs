@@ -5,10 +5,13 @@ use ratatui::layout::{Constraint, Direction, Flex, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+    ScrollbarState,
 };
 use std::env;
 use std::time::Instant;
+
+use crate::core::models::filter_models;
 
 use super::app::{App, ChatMessage};
 use super::constants::{ACCENT, LOGO_IDLE, LOGO_THINKING, SUGGESTIONS};
@@ -37,6 +40,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
 
     if let Some(ref popup) = app.confirm_popup {
         draw_confirm_popup(f, area, &popup.command);
+    }
+    if let Some(ref mut selector) = app.model_selector {
+        draw_model_selector_popup(f, area, selector);
     }
 }
 
@@ -235,7 +241,7 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
 
     let bottom_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(38)])
+        .constraints([Constraint::Min(1), Constraint::Length(56)])
         .split(shortcuts_area);
     let path_area = bottom_chunks[0];
     let shortcuts_area_right = bottom_chunks[1];
@@ -263,6 +269,8 @@ fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
         Span::raw("send"),
         Span::styled("  ↑↓ ", Style::default().fg(Color::DarkGray)),
         Span::raw("scroll"),
+        Span::styled("  Alt+M/F2 ", Style::default().fg(Color::DarkGray)),
+        Span::raw("model"),
         Span::styled("  Ctrl+C ", Style::default().fg(Color::DarkGray)),
         Span::raw("quit"),
     ]);
@@ -308,4 +316,115 @@ fn draw_confirm_popup(f: &mut Frame, area: Rect, command: &str) {
 
     f.render_widget(Clear, popup_rect);
     f.render_widget(paragraph, popup_rect);
+}
+
+fn draw_model_selector_popup(
+    f: &mut Frame,
+    area: Rect,
+    selector: &mut super::app::ModelSelectorState,
+) {
+    let popup_rect = popup_area(area, 60, 50);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(ACCENT))
+        .title(" Select model (Alt+M / F2) ");
+
+    let inner = block.inner(popup_rect);
+    f.render_widget(Clear, popup_rect);
+    f.render_widget(block, popup_rect);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(3),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+    let filter_area = chunks[0];
+    let list_area = chunks[1];
+    let hint_area = chunks[2];
+
+    // Filter input
+    let filter_content = if selector.filter.is_empty() {
+        Span::styled("Filter... ", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::raw(selector.filter.as_str())
+    };
+    let filter_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+    let filter_inner = filter_block.inner(filter_area);
+    let filter_para = Paragraph::new(Line::from(filter_content))
+        .block(filter_block)
+        .style(Style::default().fg(Color::White));
+    f.render_widget(filter_para, filter_area);
+    let cx = filter_inner.x + selector.filter.chars().count().min(filter_inner.width as usize) as u16;
+    let cy = filter_area.y + 1;
+    f.set_cursor_position(Position::new(cx, cy));
+
+    if let Some(ref err) = selector.fetch_error {
+        let para = Paragraph::new(Line::from(Span::styled(
+            format!("Error: {}", err),
+            Style::default().fg(Color::Red),
+        )));
+        f.render_widget(para, list_area);
+    } else if selector.models.is_empty() {
+        let para = Paragraph::new(Line::from(Span::styled(
+            "Loading...",
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+        )));
+        f.render_widget(para, list_area);
+    } else {
+        let filtered = filter_models(&selector.models, &selector.filter);
+        let clamped_index = selector
+            .selected_index
+            .min(filtered.len().saturating_sub(1));
+        selector.selected_index = clamped_index;
+
+        if filtered.is_empty() {
+            let msg = if selector.filter.is_empty() {
+                "No models"
+            } else {
+                "No models match filter"
+            };
+            let para = Paragraph::new(Line::from(Span::styled(
+                msg,
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+            )));
+            f.render_widget(para, list_area);
+        } else {
+            let items: Vec<ListItem> = filtered
+                .iter()
+                .enumerate()
+                .map(|(i, m)| {
+                    let style = if i == selector.selected_index {
+                        Style::default().fg(Color::Black).bg(ACCENT)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(format!(" {} ", m.name)).style(style)
+                })
+                .collect();
+
+            selector.list_state.select(Some(selector.selected_index));
+
+            let list = List::new(items).highlight_style(Style::default().fg(Color::Black).bg(ACCENT));
+            f.render_stateful_widget(list, list_area, &mut selector.list_state);
+        }
+    }
+
+    let hint = Paragraph::new(Line::from(vec![
+        Span::styled("↑↓ ", Style::default().fg(Color::DarkGray)),
+        Span::raw("select  "),
+        Span::styled("Enter ", Style::default().fg(Color::DarkGray)),
+        Span::raw("confirm  "),
+        Span::styled("Esc ", Style::default().fg(Color::DarkGray)),
+        Span::raw("cancel  "),
+        Span::styled("type ", Style::default().fg(Color::DarkGray)),
+        Span::raw("filter  "),
+        Span::styled("Alt+M/F2 ", Style::default().fg(Color::DarkGray)),
+        Span::raw("reopen"),
+    ]));
+    f.render_widget(hint, hint_area);
 }

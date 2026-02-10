@@ -97,6 +97,7 @@ pub type OnProgress = Box<dyn Fn(&str) + Send>;
 /// If `on_progress` is Some, it is called with verbose updates during processing.
 pub async fn chat(
     config: &Config,
+    model: &str,
     prompt: &str,
     mode: &str,
     confirm_destructive: Option<ConfirmDestructive>,
@@ -119,6 +120,7 @@ pub async fn chat(
     run_agent_loop(
         &client,
         config,
+        model,
         &tools_defs,
         &tools_list,
         &mut messages,
@@ -132,7 +134,8 @@ pub async fn chat(
 
 async fn run_agent_loop(
     client: &Client<OpenAIConfig>,
-    config: &Config,
+    _config: &Config,
+    model: &str,
     tools_defs: &[Value],
     tools_list: &[Box<dyn tools::Tool>],
     messages: &mut Arc<Vec<Value>>,
@@ -148,7 +151,7 @@ async fn run_agent_loop(
         let response: Value = client
             .chat()
             .create_byot(json!({
-                "model": config.model_id,
+                "model": model,
                 "messages": messages.as_ref(),
                 "tool_choice": "auto",
                 "tools": tools_defs,
@@ -283,6 +286,7 @@ async fn run_agent_loop(
 /// Call this when you receive `NeedsConfirmation` and the user has answered.
 pub async fn chat_resume(
     config: &Config,
+    model: &str,
     state: ConfirmState,
     confirmed: bool,
 ) -> Result<ChatResult, ChatError> {
@@ -310,6 +314,7 @@ pub async fn chat_resume(
     run_agent_loop(
         &client,
         config,
+        model,
         &tools_defs,
         &tools_list,
         &mut messages,
