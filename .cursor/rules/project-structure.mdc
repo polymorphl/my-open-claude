@@ -1,0 +1,88 @@
+---
+description: Project structure and organization conventions for my-open-claude
+alwaysApply: true
+---
+
+# my-open-claude Project Structure
+
+This Rust project follows a layered architecture: business logic (`core`), interface (`tui`), and entry point (`main`).
+
+## Standard Directory Layout
+
+```
+src/
+├── main.rs              # Entry point, CLI parsing, orchestration
+├── core/                # Business logic (no UI dependencies)
+│   ├── config.rs        # Configuration (env, API)
+│   ├── confirm.rs       # Confirmation abstraction (CLI/TUI)
+│   ├── credits.rs       # OpenRouter credits fetching
+│   ├── persistence.rs   # Persistence (last model used)
+│   ├── models/          # Model discovery, filtering, caching
+│   │   ├── mod.rs       # Public re-exports
+│   │   ├── info.rs      # ModelInfo struct
+│   │   ├── cache.rs     # 24h disk cache
+│   │   └── fetch.rs     # API fetch, filter, resolve
+│   ├── llm/             # Agent loop, chat, streaming
+│   │   ├── mod.rs       # Chat, chat_resume, public API
+│   │   ├── agent_loop.rs# Streaming loop, tool dispatch
+│   │   ├── tool_execution.rs  # Single tool call execution
+│   │   ├── error.rs     # LLM error types
+│   │   └── stream.rs    # Stream chunk parsing
+│   └── tools/           # Agent tools
+│       ├── mod.rs       # Tool trait, tool registry
+│       ├── bash.rs      # Command execution
+│       ├── read.rs      # File reading
+│       └── write.rs     # File writing
+└── tui/                 # Text interface (ratatui)
+    ├── mod.rs           # Main loop, credits, pending chat
+    ├── app.rs           # Application state
+    ├── handlers/        # Keyboard/mouse event handling
+    │   ├── mod.rs       # Orchestrator, handle_key, handle_mouse
+    │   ├── confirm.rs   # Confirm popup (y/n)
+    │   ├── model_selector.rs  # Model picker popup
+    │   └── input.rs     # Main input, send, scroll
+    ├── draw/            # Widget rendering
+    │   ├── mod.rs       # Layout orchestration
+    │   ├── header.rs    # Logo, title, model, credits
+    │   ├── history.rs   # Chat history with scrollbar
+    │   ├── input.rs     # Input block, suggestions, bottom bar
+    │   └── popups.rs    # Confirm popup, model selector popup
+    ├── constants.rs     # UI constants (suggestions, colors)
+    └── text.rs          # Text formatting and wrapping
+
+tests/                   # Integration tests
+└── integration.rs       # Multi-module tests
+```
+
+## Dependency Rules
+
+1. **core/** must never import `tui` or `main`. It is UI-independent.
+2. **tui/** may import `core`. Not the reverse.
+3. **main.rs** orchestrates entry (CLI vs TUI) and imports both `core` and `tui`.
+
+## Where to Place New Code
+
+| Type of code | Location |
+|--------------|----------|
+| Business logic, API access, data models | `core/` |
+| New agent tool | `core/tools/<name>.rs` |
+| LLM / agent logic | `core/llm/` |
+| New models submodule | `core/models/<name>.rs` |
+| Rendering, widgets, layout | `tui/draw/` (header, history, input, popups) |
+| Event handling (keyboard, mouse) | `tui/handlers/` (confirm, model_selector, input) |
+| App state, message structures | `tui/app.rs` |
+| CLI parsing, orchestration | `main.rs` |
+| Integration tests | `tests/` |
+
+## Rust Conventions
+
+- One module per file; `mod.rs` re-exports submodules.
+- Error types specific to a domain: `core/llm/error.rs`.
+- Document modules with `//!` at the top of the file.
+- Shared helpers stay in the relevant module or a dedicated submodule.
+- If a file exceeds ~400 lines, extract logic into a submodule.
+
+## Testing
+
+- **Unit tests**: `#[cfg(test)]` in each module, or `tests/module_name.rs`.
+- **Integration tests**: `tests/` at project root.

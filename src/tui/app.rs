@@ -46,30 +46,31 @@ impl Default for ScrollPosition {
 }
 
 pub struct App {
-    pub(super) messages: Vec<ChatMessage>,
-    pub(super) input: String,
-    pub(super) scroll: ScrollPosition,
-    pub(super) last_max_scroll: usize,
+    pub(crate) messages: Vec<ChatMessage>,
+    /// User input in the text field.
+    pub(crate) input: String,
+    pub(crate) scroll: ScrollPosition,
+    pub(crate) last_max_scroll: usize,
     /// Index of the selected suggestion (Tab to cycle).
-    pub(super) selected_suggestion: usize,
+    pub selected_suggestion: usize,
     /// When set, show confirmation popup and ignore normal input until y/n.
-    pub(super) confirm_popup: Option<ConfirmPopup>,
+    pub confirm_popup: Option<ConfirmPopup>,
     /// Model ID displayed in the header and used for chat (e.g. "anthropic/claude-haiku-4.5").
-    pub(super) model_name: String,
+    pub model_name: String,
     /// Same as model_name; used for API calls.
-    pub(super) current_model_id: String,
+    pub current_model_id: String,
     /// When set, show model selector popup (Alt+M).
-    pub(super) model_selector: Option<ModelSelectorState>,
+    pub model_selector: Option<ModelSelectorState>,
     /// Content width from last draw; used to compute scroll-to-start when adding new messages.
-    pub(super) last_content_width: Option<usize>,
+    pub(crate) last_content_width: Option<usize>,
     /// Credit balance: (total_credits, total_usage). Fetched on startup, refreshed every 30 min.
-    pub(super) credit_data: Option<(f64, f64)>,
+    pub(crate) credit_data: Option<(f64, f64)>,
     /// Rect of credits widget in header; used for click detection and hover.
-    pub(super) credits_header_rect: Option<Rect>,
+    pub(crate) credits_header_rect: Option<Rect>,
     /// When credits were last successfully fetched; for 30-min refresh.
-    pub(super) credits_last_fetched_at: Option<Instant>,
+    pub(crate) credits_last_fetched_at: Option<Instant>,
     /// Mouse is over credits area; used for cursor style.
-    pub(super) hovering_credits: bool,
+    pub(crate) hovering_credits: bool,
 }
 
 impl App {
@@ -92,11 +93,11 @@ impl App {
         }
     }
 
-    pub(super) fn push_user(&mut self, text: &str) {
+    pub(crate) fn push_user(&mut self, text: &str) {
         self.messages.push(ChatMessage::User(text.to_string()));
     }
 
-    pub(super) fn push_assistant(&mut self, text: String) {
+    pub(crate) fn push_assistant(&mut self, text: String) {
         self.messages.push(ChatMessage::Assistant(text));
     }
 
@@ -145,20 +146,20 @@ impl App {
     }
 
     /// Must be called before scroll_up/scroll_down when at bottom.
-    pub(super) fn materialize_scroll(&mut self) {
+    pub(crate) fn materialize_scroll(&mut self) {
         if self.scroll == ScrollPosition::Bottom {
             self.scroll = ScrollPosition::Line(self.last_max_scroll);
         }
     }
 
-    pub(super) fn scroll_down(&mut self, n: usize) {
+    pub(crate) fn scroll_down(&mut self, n: usize) {
         self.materialize_scroll();
         if let ScrollPosition::Line(pos) = self.scroll {
             self.scroll = ScrollPosition::Line((pos + n).min(self.last_max_scroll));
         }
     }
 
-    pub(super) fn scroll_up(&mut self, n: usize) {
+    pub(crate) fn scroll_up(&mut self, n: usize) {
         self.materialize_scroll();
         if let ScrollPosition::Line(pos) = self.scroll {
             self.scroll = ScrollPosition::Line(pos.saturating_sub(n));
@@ -166,7 +167,7 @@ impl App {
     }
 
     /// Resolve scroll position to a concrete line index.
-    pub(super) fn scroll_line(&self) -> usize {
+    pub(crate) fn scroll_line(&self) -> usize {
         match self.scroll {
             ScrollPosition::Line(n) => n.min(self.last_max_scroll),
             ScrollPosition::Bottom => self.last_max_scroll,

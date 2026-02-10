@@ -1,4 +1,4 @@
-//! Shared model info type (no dependencies on models_cache or API).
+//! Shared model info type (no dependencies on cache or API).
 
 use serde::{Deserialize, Serialize};
 
