@@ -100,6 +100,30 @@ impl App {
         self.messages.push(ChatMessage::Assistant(text));
     }
 
+    /// Append a streamed content chunk to the last Assistant message, or create one if none.
+    pub(super) fn append_assistant_chunk(&mut self, chunk: &str) {
+        match self.messages.last_mut() {
+            Some(ChatMessage::Assistant(s)) => s.push_str(chunk),
+            _ => self.messages.push(ChatMessage::Assistant(chunk.to_string())),
+        }
+    }
+
+    /// Remove the last message if it is an empty Assistant (e.g. before adding tool logs).
+    pub(super) fn remove_last_if_empty_assistant(&mut self) {
+        if self.messages.last().is_some_and(|m| matches!(m, ChatMessage::Assistant(s) if s.is_empty())) {
+            self.messages.pop();
+        }
+    }
+
+    /// Replace the last Assistant message with the given content, or push if none.
+    pub(super) fn replace_or_push_assistant(&mut self, content: String) {
+        if let Some(ChatMessage::Assistant(s)) = self.messages.last_mut() {
+            *s = content;
+        } else {
+            self.messages.push(ChatMessage::Assistant(content));
+        }
+    }
+
     pub(super) fn push_tool_log(&mut self, line: String) {
         self.messages.push(ChatMessage::ToolLog(line));
     }
@@ -125,10 +149,6 @@ impl App {
         if self.scroll == ScrollPosition::Bottom {
             self.scroll = ScrollPosition::Line(self.last_max_scroll);
         }
-    }
-
-    pub(super) fn scroll_to_bottom(&mut self) {
-        self.scroll = ScrollPosition::Bottom;
     }
 
     pub(super) fn scroll_down(&mut self, n: usize) {

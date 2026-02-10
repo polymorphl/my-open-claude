@@ -46,8 +46,15 @@ enum ModelSelectorAction {
     Close,
     Select(models::ModelInfo),
 }
+
+/// Holds receivers for a chat request in progress (progress logs, streamed content, final result).
+struct PendingChat {
+    progress_rx: mpsc::Receiver<String>,
+    stream_rx: mpsc::Receiver<String>,
+    result_rx: mpsc::Receiver<Result<llm::ChatResult, String>>,
+}
+
 use draw::draw;
-use text::line_count_before_last;
 
 /// Guard that restores terminal state on drop (including on panic).
 struct TerminalGuard;
@@ -92,7 +99,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     let model_name = models::resolve_model_display_name(&config.model_id);
     let mut app = App::new(config.model_id.clone(), model_name);
     let mut api_messages: Option<Vec<Value>> = None;
-    let mut pending_chat: Option<(mpsc::Receiver<String>, mpsc::Receiver<Result<llm::ChatResult, String>>)> = None;
+    let mut pending_chat: Option<PendingChat> = None;
     let mut pending_model_fetch: Option<mpsc::Receiver<Result<Vec<models::ModelInfo>, String>>> = None;
 
     // Enable mouse events for credits click
@@ -161,11 +168,15 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
             }
         }
 
-        if let Some((ref progress_rx, ref result_rx)) = pending_chat {
-            while let Ok(msg) = progress_rx.try_recv() {
+        if let Some(ref mut chat) = pending_chat {
+            while let Ok(msg) = chat.progress_rx.try_recv() {
+                app.remove_last_if_empty_assistant();
                 app.push_tool_log(msg);
             }
-            if let Ok(result) = result_rx.try_recv() {
+            while let Ok(chunk) = chat.stream_rx.try_recv() {
+                app.append_assistant_chunk(&chunk);
+            }
+            if let Ok(result) = chat.result_rx.try_recv() {
                 app.set_thinking(false);
                 handle_chat_result(&mut app, &mut api_messages, result, true);
                 pending_chat = None;
@@ -221,14 +232,38 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                     let cancelled =
                         matches!(key.code, KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Enter);
                     if confirmed || cancelled {
-                        let result = rt.block_on(llm::chat_resume(
-                            config.as_ref(),
-                            &app.current_model_id,
-                            popup.state,
-                            confirmed,
-                        ));
-                        app.set_thinking(false);
-                        handle_chat_result(&mut app, &mut api_messages, result, false);
+                        if pending_chat.is_none() {
+                            app.push_assistant(String::new());
+                            app.scroll = app::ScrollPosition::Line(0);
+                            let (progress_tx, progress_rx) = mpsc::channel();
+                            let (stream_tx, stream_rx) = mpsc::channel();
+                            let (result_tx, result_rx) = mpsc::channel();
+                            let config = Arc::clone(&config);
+                            let model_id = app.current_model_id.clone();
+                            let rt_clone = Arc::clone(&rt);
+                            thread::spawn(move || {
+                                let on_progress: llm::OnProgress = Box::new(move |s| {
+                                    let _ = progress_tx.send(s.to_string());
+                                });
+                                let on_content_chunk: llm::OnContentChunk = Box::new(move |s| {
+                                    let _ = stream_tx.send(s.to_string());
+                                });
+                                let result = rt_clone.block_on(llm::chat_resume(
+                                    config.as_ref(),
+                                    &model_id,
+                                    popup.state,
+                                    confirmed,
+                                    Some(on_progress),
+                                    Some(on_content_chunk),
+                                ));
+                                let _ = result_tx.send(result.map_err(|e| e.to_string()));
+                            });
+                            pending_chat = Some(PendingChat {
+                                progress_rx,
+                                stream_rx,
+                                result_rx,
+                            });
+                        }
                     } else {
                         app.confirm_popup = Some(popup);
                     }
@@ -338,10 +373,11 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                         if !input.is_empty() && pending_chat.is_none() {
                             app.input.clear();
                             app.push_user(&input);
-                            app.scroll_to_bottom();
-                            app.set_thinking(true);
+                            app.push_assistant(String::new());
+                            app.scroll = app::ScrollPosition::Line(0);
 
                             let (progress_tx, progress_rx) = mpsc::channel();
+                            let (stream_tx, stream_rx) = mpsc::channel();
                             let (result_tx, result_rx) = mpsc::channel();
                             let config = config.clone();
                             let rt = Arc::clone(&rt);
@@ -353,6 +389,9 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                                 let on_progress: llm::OnProgress = Box::new(move |s| {
                                     let _ = progress_tx.send(s.to_string());
                                 });
+                                let on_content_chunk: llm::OnContentChunk = Box::new(move |s| {
+                                    let _ = stream_tx.send(s.to_string());
+                                });
                                 let result = rt
                                     .block_on(llm::chat(
                                         config.as_ref(),
@@ -362,12 +401,17 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                                         None,
                                         prev_messages,
                                         Some(on_progress),
+                                        Some(on_content_chunk),
                                     ))
                                     .map_err(|e| e.to_string());
                                 let _ = result_tx.send(result);
                             });
 
-                            pending_chat = Some((progress_rx, result_rx));
+                            pending_chat = Some(PendingChat {
+                                progress_rx,
+                                stream_rx,
+                                result_rx,
+                            });
                         }
                     }
                     (KeyCode::Backspace, _) => {
@@ -398,7 +442,6 @@ fn handle_chat_result(
     result: Result<llm::ChatResult, impl std::fmt::Display>,
     tool_log_already_streamed: bool,
 ) {
-    let cw = app.last_content_width.unwrap_or(80);
     match result {
         Ok(llm::ChatResult::Complete {
             content,
@@ -413,15 +456,15 @@ fn handle_chat_result(
                     app.push_tool_log(line);
                 }
             }
-            app.push_assistant(content);
-            app.scroll = app::ScrollPosition::Line(line_count_before_last(&app.messages, cw));
+            app.replace_or_push_assistant(content);
+            app.scroll = app::ScrollPosition::Line(0);
         }
         Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
             app.confirm_popup = Some(app::ConfirmPopup { command, state });
         }
         Err(e) => {
-            app.push_assistant(format!("Error: {}", e));
-            app.scroll = app::ScrollPosition::Line(line_count_before_last(&app.messages, cw));
+            app.replace_or_push_assistant(format!("Error: {}", e));
+            app.scroll = app::ScrollPosition::Line(0);
         }
     }
 }

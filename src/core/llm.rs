@@ -1,5 +1,6 @@
 use async_openai::config::OpenAIConfig;
 use async_openai::Client;
+use futures::StreamExt;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -86,6 +87,9 @@ fn make_complete(
 /// Callback for progress updates during chat (e.g. "Calling API...", "→ Bash: ls").
 pub type OnProgress = Box<dyn Fn(&str) + Send>;
 
+/// Callback for each streamed content chunk (text only).
+pub type OnContentChunk = Box<dyn Fn(&str) + Send>;
+
 /// Run an agent loop that:
 /// - starts with the user's prompt (and optional previous conversation)
 /// - repeatedly calls the model
@@ -95,6 +99,7 @@ pub type OnProgress = Box<dyn Fn(&str) + Send>;
 /// If `confirm_destructive` is Some (CLI mode), destructive commands use the callback.
 /// If None (TUI mode), returns `NeedsConfirmation` so the TUI can show a popup.
 /// If `on_progress` is Some, it is called with verbose updates during processing.
+/// If `on_content_chunk` is Some, it is called with each streamed content chunk.
 pub async fn chat(
     config: &Config,
     model: &str,
@@ -103,6 +108,7 @@ pub async fn chat(
     confirm_destructive: Option<ConfirmDestructive>,
     previous_messages: Option<Vec<Value>>,
     on_progress: Option<OnProgress>,
+    on_content_chunk: Option<OnContentChunk>,
 ) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
@@ -128,8 +134,73 @@ pub async fn chat(
         mode,
         &confirm_destructive,
         on_progress.as_deref(),
+        on_content_chunk.as_deref(),
     )
     .await
+}
+
+fn map_api_error<E>(e: E) -> ChatError
+where
+    E: std::fmt::Display + Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
+{
+    let s = e.to_string();
+    if s.contains("401") && s.contains("cookie auth") {
+        return ChatError::ApiAuth(
+            "API error (401): No cookie auth credentials found. Check OPENROUTER_API_KEY in .env (see env.example).".to_string(),
+        );
+    }
+    if s.contains("\"error\"") {
+        if let Some((_, rest)) = s.split_once("\"message\":\"") {
+            if let Some((msg, _)) = rest.split_once('"') {
+                return ChatError::ApiMessage(msg.to_string());
+            }
+        }
+    }
+    ChatError::Other(e.into())
+}
+
+/// Max tool calls to accept from a single response (guards against malformed API).
+const MAX_TOOL_CALLS: usize = 64;
+/// Max content size (2MB) to prevent unbounded memory growth from malformed streams.
+const MAX_CONTENT_BYTES: usize = 2 * 1024 * 1024;
+/// Max size for a single tool call's arguments JSON (64KB).
+const MAX_TOOL_CALL_ARGS_BYTES: usize = 64 * 1024;
+
+/// Merge a tool_calls delta into accumulated tool calls (by index). Arguments are concatenated.
+/// Skips deltas with out-of-bounds index to handle malformed API responses.
+fn merge_tool_call_delta(acc: &mut Vec<Value>, delta_tc: &Value) {
+    let index = match delta_tc["index"].as_u64() {
+        Some(i) if i < MAX_TOOL_CALLS as u64 => i as usize,
+        _ => return,
+    };
+    while acc.len() <= index {
+        acc.push(json!({
+            "id": "",
+            "type": "function",
+            "function": { "name": "", "arguments": "" }
+        }));
+    }
+    let entry = &mut acc[index];
+    if let Some(id) = delta_tc["id"].as_str() {
+        if !id.is_empty() {
+            entry["id"] = json!(id);
+        }
+    }
+    if let Some(fn_part) = delta_tc.get("function") {
+        if let Some(name) = fn_part["name"].as_str() {
+            if !name.is_empty() {
+                entry["function"]["name"] = json!(name);
+            }
+        }
+        if let Some(args) = fn_part["arguments"].as_str() {
+            if !args.is_empty() {
+                let current = entry["function"]["arguments"].as_str().unwrap_or("");
+                if current.len() + args.len() <= MAX_TOOL_CALL_ARGS_BYTES {
+                    entry["function"]["arguments"] = json!(format!("{}{}", current, args));
+                }
+            }
+        }
+    }
 }
 
 async fn run_agent_loop(
@@ -143,38 +214,81 @@ async fn run_agent_loop(
     mode: &str,
     confirm_destructive: &Option<ConfirmDestructive>,
     on_progress: Option<&(dyn Fn(&str) + Send)>,
+    on_content_chunk: Option<&(dyn Fn(&str) + Send)>,
 ) -> Result<ChatResult, ChatError> {
     loop {
         if let Some(ref progress) = on_progress {
             progress("Calling API...");
         }
-        let response: Value = client
+        let mut stream = client
             .chat()
-            .create_byot(json!({
+            .create_stream_byot::<_, Value>(json!({
                 "model": model,
                 "messages": messages.as_ref(),
                 "tool_choice": "auto",
                 "tools": tools_defs,
+                "stream": true,
             }))
             .await
-            .map_err(|e| {
-                let s = e.to_string();
-                if s.contains("401") && s.contains("cookie auth") {
-                    return ChatError::ApiAuth(
-                        "API error (401): No cookie auth credentials found. Check OPENROUTER_API_KEY in .env (see env.example).".to_string(),
-                    );
-                }
-                if s.contains("\"error\"") {
-                    if let Some((_, rest)) = s.split_once("\"message\":\"") {
-                        if let Some((msg, _)) = rest.split_once('"') {
-                            return ChatError::ApiMessage(msg.to_string());
-                        }
-                    }
-                }
-                ChatError::Other(e.into())
-            })?;
+            .map_err(|e| map_api_error(e))?;
 
-        let assistant_message = &response["choices"][0]["message"];
+        let mut full_content = String::new();
+        let mut accumulated_tool_calls: Vec<Value> = Vec::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|e| map_api_error(e))?;
+
+            if let Some(err) = chunk.get("error") {
+                let msg = err.get("message").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                return Err(ChatError::ApiMessage(msg.to_string()));
+            }
+
+            let choices = chunk.get("choices").and_then(|c| c.as_array());
+            let Some(choices) = choices else { continue };
+            let Some(choice) = choices.first() else { continue };
+            let delta = &choice["delta"];
+
+            if let Some(content) = delta["content"].as_str() {
+                if !content.is_empty() && full_content.len() + content.len() <= MAX_CONTENT_BYTES {
+                    full_content.push_str(content);
+                    if let Some(ref cb) = on_content_chunk {
+                        cb(content);
+                    }
+                } else if full_content.len() >= MAX_CONTENT_BYTES {
+                    break;
+                }
+            }
+
+            if let Some(tc_arr) = delta["tool_calls"].as_array() {
+                for tc in tc_arr {
+                    merge_tool_call_delta(&mut accumulated_tool_calls, tc);
+                }
+            }
+        }
+
+        let tool_calls_opt = if accumulated_tool_calls.is_empty() {
+            None
+        } else {
+            Some(accumulated_tool_calls)
+        };
+
+        let assistant_message = if let Some(ref tcs) = tool_calls_opt {
+            json!({
+                "role": "assistant",
+                "content": full_content,
+                "tool_calls": tcs.iter().map(|tc| json!({
+                    "id": tc["id"].as_str().unwrap_or(""),
+                    "type": "function",
+                    "function": tc["function"].clone()
+                })).collect::<Vec<_>>()
+            })
+        } else {
+            json!({
+                "role": "assistant",
+                "content": full_content
+            })
+        };
+
         Arc::make_mut(messages).push(assistant_message.clone());
 
         let tool_calls_opt = assistant_message
@@ -182,19 +296,11 @@ async fn run_agent_loop(
             .and_then(|v| v.as_array());
 
         let Some(tool_calls) = tool_calls_opt else {
-            let content = assistant_message["content"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-            return Ok(make_complete(&content, tool_log.as_ref(), messages.as_ref()));
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
         };
 
         if tool_calls.is_empty() {
-            let content = assistant_message["content"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-            return Ok(make_complete(&content, tool_log.as_ref(), messages.as_ref()));
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
         }
 
         for tool_call in tool_calls {
@@ -284,11 +390,14 @@ async fn run_agent_loop(
 
 /// Resume the chat loop after user confirmed or cancelled a destructive command.
 /// Call this when you receive `NeedsConfirmation` and the user has answered.
+/// Pass `on_progress` and `on_content_chunk` for streaming (e.g. from TUI).
 pub async fn chat_resume(
     config: &Config,
     model: &str,
     state: ConfirmState,
     confirmed: bool,
+    on_progress: Option<OnProgress>,
+    on_content_chunk: Option<OnContentChunk>,
 ) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
@@ -321,7 +430,8 @@ pub async fn chat_resume(
         &mut tool_log,
         &state.mode,
         &None, // No callback on resume; if another destructive command, return NeedsConfirmation again
-        None,  // No progress callback on resume
+        on_progress.as_deref(),
+        on_content_chunk.as_deref(),
     )
     .await
 }
