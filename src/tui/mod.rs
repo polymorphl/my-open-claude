@@ -44,10 +44,7 @@ impl Drop for TerminalGuard {
 
 /// Run the TUI loop. Uses a dedicated Tokio runtime for async chat calls.
 pub fn run(config: Arc<Config>) -> io::Result<()> {
-    use crossterm::terminal::{
-        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
-        enable_raw_mode,
-    };
+    use crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, enable_raw_mode};
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
 
@@ -60,9 +57,11 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let rt = Runtime::new().map_err(|e| {
-        io::Error::new(io::ErrorKind::Other, format!("Failed to create runtime: {}", e))
-    })?;
+    let rt = Arc::new(
+        Runtime::new().map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("Failed to create runtime: {}", e))
+        })?,
+    );
 
     let mut app = App::new(config.model_id.clone());
     let mut api_messages: Option<Vec<Value>> = None;
@@ -93,8 +92,11 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                     let cancelled =
                         matches!(key.code, KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Enter);
                     if confirmed || cancelled {
-                        let result =
-                            rt.block_on(llm::chat_resume(config.as_ref(), popup.state, confirmed));
+                        let result = rt.block_on(llm::chat_resume(
+                            config.as_ref(),
+                            popup.state,
+                            confirmed,
+                        ));
                         app.set_thinking(false);
                         handle_chat_result(&mut app, &mut api_messages, result, false);
                     } else {
@@ -122,11 +124,11 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                             let (progress_tx, progress_rx) = mpsc::channel();
                             let (result_tx, result_rx) = mpsc::channel();
                             let config = config.clone();
+                            let rt = Arc::clone(&rt);
                             let mode = SUGGESTIONS[app.selected_suggestion].to_string();
                             let prev_messages = api_messages.clone();
 
                             thread::spawn(move || {
-                                let rt = Runtime::new().expect("runtime");
                                 let on_progress: llm::OnProgress = Box::new(move |s| {
                                     let _ = progress_tx.send(s.to_string());
                                 });
@@ -162,8 +164,6 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
         }
     }
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     Ok(())
 }
