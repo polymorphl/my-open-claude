@@ -2,6 +2,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::process::Command;
 
+use super::{str_arg, tool_definition};
+
 /// Command prefixes (normalized, lowercase) that are considered destructive and require confirmation.
 const DESTRUCTIVE_PREFIXES: &[&str] = &[
     "rm ",
@@ -45,30 +47,24 @@ impl super::Tool for BashTool {
     }
 
     fn definition(&self) -> Value {
-        json!({
-            "type": "function",
-            "function": {
-                "name": self.name(),
-                "description": "Execute a shell command",
-                "parameters": {
-                    "type": "object",
-                    "required": ["command"],
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The command to execute"
-                        }
+        tool_definition(
+            self.name(),
+            "Execute a shell command",
+            json!({
+                "type": "object",
+                "required": ["command"],
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The command to execute"
                     }
                 }
-            }
-        })
+            }),
+        )
     }
 
     fn args_preview(&self, args: &Value) -> String {
-        args.get("command")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
+        str_arg(args, "command")
     }
 
     fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {

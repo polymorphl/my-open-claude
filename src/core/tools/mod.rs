@@ -2,11 +2,28 @@ mod bash;
 mod read;
 mod write;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 pub use bash::{is_destructive, BashTool};
 pub use read::ReadTool;
 pub use write::WriteTool;
+
+/// Helper to extract a string argument from tool args JSON.
+pub fn str_arg(args: &Value, key: &str) -> String {
+    args.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
+}
+
+/// Helper to build the standard tool definition structure for the API.
+pub fn tool_definition(name: &str, description: &str, parameters: Value) -> Value {
+    json!({
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": parameters
+        }
+    })
+}
 
 /// Trait for LLM tools. Each tool provides its API definition and executes with typed arguments.
 pub trait Tool: Send + Sync {

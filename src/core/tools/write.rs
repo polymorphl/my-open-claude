@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::fs;
+
+use super::{str_arg, tool_definition};
 
 #[derive(Debug, Deserialize)]
 pub struct WriteArgs {
@@ -16,40 +17,34 @@ impl super::Tool for WriteTool {
     }
 
     fn definition(&self) -> Value {
-        json!({
-            "type": "function",
-            "function": {
-                "name": self.name(),
-                "description": "Write content to a file",
-                "parameters": {
-                    "type": "object",
-                    "required": ["file_path", "content"],
-                    "properties": {
-                        "file_path": {
-                            "type": "string",
-                            "description": "The path of the file to write to"
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "The content to write to the file"
-                        }
+        tool_definition(
+            self.name(),
+            "Write content to a file",
+            json!({
+                "type": "object",
+                "required": ["file_path", "content"],
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path of the file to write to"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write to the file"
                     }
                 }
-            }
-        })
+            }),
+        )
     }
 
     fn args_preview(&self, args: &Value) -> String {
-        args.get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
+        str_arg(args, "file_path")
     }
 
     fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
         let parsed: WriteArgs = serde_json::from_value(args.clone())
             .map_err(|e| format!("Invalid arguments: {}", e))?;
-        fs::write(&parsed.file_path, &parsed.content)?;
+        std::fs::write(&parsed.file_path, &parsed.content)?;
         Ok("OK".to_string())
     }
 }

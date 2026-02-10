@@ -1,11 +1,44 @@
 use async_openai::config::OpenAIConfig;
 use async_openai::Client;
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 use crate::confirm::ConfirmDestructive;
 use crate::core::config::Config;
 use crate::core::tools;
 use crate::core::tools::Tool;
+
+/// Errors from the chat/agent pipeline.
+#[derive(Debug)]
+pub enum ChatError {
+    ApiAuth(String),
+    ApiMessage(String),
+    ToolArgs { tool: String, source: serde_json::Error },
+    Other(Box<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+impl std::fmt::Display for ChatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChatError::ApiAuth(msg) => write!(f, "{}", msg),
+            ChatError::ApiMessage(msg) => write!(f, "API error: {}", msg),
+            ChatError::ToolArgs { tool, source } => {
+                write!(f, "Invalid tool arguments for {}: {}", tool, source)
+            }
+            ChatError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for ChatError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ChatError::ToolArgs { source, .. } => Some(source),
+            ChatError::Other(e) => e.source(),
+            _ => None,
+        }
+    }
+}
 
 /// Interaction mode: "Ask" = explanations only (no write/bash), "Build" = all tools.
 pub fn is_ask_mode(mode: &str) -> bool {
@@ -30,8 +63,8 @@ pub enum ChatResult {
 /// Internal state to resume the chat loop after user confirms or cancels.
 #[derive(Debug)]
 pub struct ConfirmState {
-    pub(super) messages: Vec<Value>,
-    pub(super) tool_log: Vec<String>,
+    pub(super) messages: Arc<Vec<Value>>,
+    pub(super) tool_log: Arc<Vec<String>>,
     pub(super) tool_call_id: String,
     pub(super) mode: String,
     pub(super) tools: Vec<Value>,
@@ -69,18 +102,19 @@ pub async fn chat(
     confirm_destructive: Option<ConfirmDestructive>,
     previous_messages: Option<Vec<Value>>,
     on_progress: Option<OnProgress>,
-) -> Result<ChatResult, Box<dyn std::error::Error>> {
+) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
-    let mut messages = previous_messages.unwrap_or_default();
+    let mut messages: Vec<Value> = previous_messages.unwrap_or_default();
     messages.push(json!({
         "role": "user",
         "content": prompt,
     }));
+    let mut messages = Arc::new(messages);
+    let mut tool_log = Arc::new(Vec::<String>::new());
 
     let tools_defs = tools::definitions();
     let tools_list = tools::all();
-    let mut tool_log: Vec<String> = Vec::new();
 
     run_agent_loop(
         &client,
@@ -101,12 +135,12 @@ async fn run_agent_loop(
     config: &Config,
     tools_defs: &[Value],
     tools_list: &[Box<dyn tools::Tool>],
-    messages: &mut Vec<Value>,
-    tool_log: &mut Vec<String>,
+    messages: &mut Arc<Vec<Value>>,
+    tool_log: &mut Arc<Vec<String>>,
     mode: &str,
     confirm_destructive: &Option<ConfirmDestructive>,
     on_progress: Option<&(dyn Fn(&str) + Send)>,
-) -> Result<ChatResult, Box<dyn std::error::Error>> {
+) -> Result<ChatResult, ChatError> {
     loop {
         if let Some(ref progress) = on_progress {
             progress("Calling API...");
@@ -115,7 +149,7 @@ async fn run_agent_loop(
             .chat()
             .create_byot(json!({
                 "model": config.model_id,
-                "messages": messages,
+                "messages": messages.as_ref(),
                 "tool_choice": "auto",
                 "tools": tools_defs,
             }))
@@ -123,26 +157,22 @@ async fn run_agent_loop(
             .map_err(|e| {
                 let s = e.to_string();
                 if s.contains("401") && s.contains("cookie auth") {
-                    return Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "API error (401): No cookie auth credentials found. Check OPENROUTER_API_KEY in .env (see env.example).",
-                    )) as Box<dyn std::error::Error>;
+                    return ChatError::ApiAuth(
+                        "API error (401): No cookie auth credentials found. Check OPENROUTER_API_KEY in .env (see env.example).".to_string(),
+                    );
                 }
                 if s.contains("\"error\"") {
                     if let Some((_, rest)) = s.split_once("\"message\":\"") {
                         if let Some((msg, _)) = rest.split_once('"') {
-                            return Box::new(std::io::Error::new(
-                                std::io::ErrorKind::InvalidInput,
-                                format!("API error: {}", msg),
-                            )) as Box<dyn std::error::Error>;
+                            return ChatError::ApiMessage(msg.to_string());
                         }
                     }
                 }
-                e.into()
+                ChatError::Other(e.into())
             })?;
 
         let assistant_message = &response["choices"][0]["message"];
-        messages.push(assistant_message.clone());
+        Arc::make_mut(messages).push(assistant_message.clone());
 
         let tool_calls_opt = assistant_message
             .get("tool_calls")
@@ -153,7 +183,7 @@ async fn run_agent_loop(
                 .as_str()
                 .unwrap_or("")
                 .to_string();
-            return Ok(make_complete(&content, tool_log, messages));
+            return Ok(make_complete(&content, tool_log.as_ref(), messages.as_ref()));
         };
 
         if tool_calls.is_empty() {
@@ -161,7 +191,7 @@ async fn run_agent_loop(
                 .as_str()
                 .unwrap_or("")
                 .to_string();
-            return Ok(make_complete(&content, tool_log, messages));
+            return Ok(make_complete(&content, tool_log.as_ref(), messages.as_ref()));
         }
 
         for tool_call in tool_calls {
@@ -170,10 +200,11 @@ async fn run_agent_loop(
             let name = function["name"].as_str().unwrap_or_default();
             let args_str = function["arguments"].as_str().unwrap_or("{}");
 
-            let args: Value = serde_json::from_str(args_str).unwrap_or_else(|e| {
-                eprintln!("Warning: failed to parse tool arguments for {}: {}", name, e);
-                json!({})
-            });
+            let args: Value = serde_json::from_str(args_str)
+                .map_err(|e| ChatError::ToolArgs {
+                    tool: name.to_string(),
+                    source: e,
+                })?;
 
             let args_preview = tools_list
                 .iter()
@@ -181,7 +212,7 @@ async fn run_agent_loop(
                 .map(|t| t.args_preview(&args))
                 .unwrap_or_default();
             let log_line = format!("→ {}: {}", name, args_preview);
-            tool_log.push(log_line.clone());
+            Arc::make_mut(tool_log).push(log_line.clone());
             if let Some(ref progress) = on_progress {
                 progress(&log_line);
             }
@@ -214,8 +245,8 @@ async fn run_agent_loop(
                                         return Ok(ChatResult::NeedsConfirmation {
                                             command: command.to_string(),
                                             state: ConfirmState {
-                                                messages: messages.clone(),
-                                                tool_log: tool_log.clone(),
+                                                messages: Arc::clone(messages),
+                                                tool_log: Arc::clone(tool_log),
                                                 tool_call_id: id.clone(),
                                                 mode: mode.to_string(),
                                                 tools: tools_defs.to_vec(),
@@ -239,7 +270,7 @@ async fn run_agent_loop(
                 }
             };
 
-            messages.push(json!({
+            Arc::make_mut(messages).push(json!({
                 "role": "tool",
                 "tool_call_id": id,
                 "content": result,
@@ -254,7 +285,7 @@ pub async fn chat_resume(
     config: &Config,
     state: ConfirmState,
     confirmed: bool,
-) -> Result<ChatResult, Box<dyn std::error::Error>> {
+) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
     let bash_tool = tools::BashTool;
@@ -266,7 +297,7 @@ pub async fn chat_resume(
     };
 
     let mut messages = state.messages;
-    messages.push(json!({
+    Arc::make_mut(&mut messages).push(json!({
         "role": "tool",
         "tool_call_id": state.tool_call_id,
         "content": result,

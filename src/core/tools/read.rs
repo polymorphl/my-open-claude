@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::fs;
+
+use super::{str_arg, tool_definition};
 
 #[derive(Debug, Deserialize)]
 pub struct ReadArgs {
@@ -15,35 +16,29 @@ impl super::Tool for ReadTool {
     }
 
     fn definition(&self) -> Value {
-        json!({
-            "type": "function",
-            "function": {
-                "name": self.name(),
-                "description": "Read and return the contents of a file",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "file_path": {
-                            "type": "string",
-                            "description": "The path to the file to read"
-                        }
-                    },
-                    "required": ["file_path"]
-                }
-            }
-        })
+        tool_definition(
+            self.name(),
+            "Read and return the contents of a file",
+            json!({
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path to the file to read"
+                    }
+                },
+                "required": ["file_path"]
+            }),
+        )
     }
 
     fn args_preview(&self, args: &Value) -> String {
-        args.get("file_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
+        str_arg(args, "file_path")
     }
 
     fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
         let parsed: ReadArgs = serde_json::from_value(args.clone())
             .map_err(|e| format!("Invalid arguments: {}", e))?;
-        fs::read_to_string(&parsed.file_path).map_err(Into::into)
+        std::fs::read_to_string(&parsed.file_path).map_err(Into::into)
     }
 }
