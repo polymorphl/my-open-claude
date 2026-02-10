@@ -1,4 +1,5 @@
 pub mod config;
+pub mod credits;
 pub mod llm;
 pub mod model_info;
 pub mod models;

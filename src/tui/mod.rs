@@ -8,22 +8,39 @@ mod text;
 #[allow(unused_imports)]
 pub use app::{App, ChatMessage, ConfirmPopup, ModelSelectorState};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use crossterm::execute;
-use std::io;
+use ratatui::layout::Position;
+use std::io::{self, Write};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
+use crate::core::credits;
 use crate::core::llm;
 use crate::core::models::{self, filter_models};
 use crate::core::persistence;
 
 use constants::SUGGESTIONS;
+
+const CREDITS_URL: &str = "https://openrouter.ai/settings/credits";
+const CREDITS_REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60); // 30 minutes
+
+/// Set cursor to pointer (hand) or default. Uses OSC 22 (Kitty, iTerm2, Ghostty, Foot).
+fn set_cursor_shape(pointer: bool) {
+    let seq = if pointer {
+        b"\x1b]22;pointer\x07"
+    } else {
+        b"\x1b]22;default\x07"
+    };
+    let _ = io::stdout().write_all(seq);
+    let _ = io::stdout().flush();
+}
 
 enum ModelSelectorAction {
     Close,
@@ -45,6 +62,8 @@ impl Drop for TerminalGuard {
     fn drop(&mut self) {
         use crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
         let _ = disable_raw_mode();
+        let _ = execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+        set_cursor_shape(false); // restore default cursor
         let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
     }
 }
@@ -76,7 +95,54 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     let mut pending_chat: Option<(mpsc::Receiver<String>, mpsc::Receiver<Result<llm::ChatResult, String>>)> = None;
     let mut pending_model_fetch: Option<mpsc::Receiver<Result<Vec<models::ModelInfo>, String>>> = None;
 
+    // Enable mouse events for credits click
+    execute!(io::stdout(), crossterm::event::EnableMouseCapture)?;
+
+    // Start credits fetch in background
+    let mut pending_credits_fetch = {
+        let (credits_tx, credits_rx) = mpsc::channel();
+        let config = Arc::clone(&config);
+        let rt_clone = Arc::clone(&rt);
+        thread::spawn(move || {
+            let result = rt_clone
+                .block_on(credits::fetch_credits(config.as_ref()))
+                .map(|d| (d.total_credits, d.total_usage))
+                .map_err(|e| e.to_string());
+            let _ = credits_tx.send(result);
+        });
+        Some(credits_rx)
+    };
+
     loop {
+        if let Some(ref credits_rx) = pending_credits_fetch {
+            if let Ok(result) = credits_rx.try_recv() {
+                if let Ok((total, used)) = result {
+                    app.credit_data = Some((total, used));
+                    app.credits_last_fetched_at = Some(Instant::now());
+                }
+                pending_credits_fetch = None;
+            }
+        }
+
+        // Re-fetch credits every 30 minutes (only after first successful fetch)
+        if pending_credits_fetch.is_none()
+            && app
+                .credits_last_fetched_at
+                .is_some_and(|t| t.elapsed() >= CREDITS_REFRESH_INTERVAL)
+        {
+            let config = Arc::clone(&config);
+            let rt_clone = Arc::clone(&rt);
+            let (tx, rx) = mpsc::channel();
+            pending_credits_fetch = Some(rx);
+            thread::spawn(move || {
+                let result = rt_clone
+                    .block_on(credits::fetch_credits(config.as_ref()))
+                    .map(|d| (d.total_credits, d.total_usage))
+                    .map_err(|e| e.to_string());
+                let _ = tx.send(result);
+            });
+        }
+
         if let Some(ref fetch_rx) = pending_model_fetch {
             if let Ok(result) = fetch_rx.try_recv() {
                 if let Some(ref mut selector) = app.model_selector {
@@ -109,7 +175,34 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
         terminal.draw(|f| draw(f, &mut app, f.area()))?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
+            match event::read()? {
+                Event::Mouse(mouse) => {
+                    // Crossterm mouse coords can be 1-based (xterm SGR); convert for Rect::contains
+                    let pos = Position::new(
+                        mouse.column.saturating_sub(1),
+                        mouse.row.saturating_sub(1),
+                    );
+                    let over_credits = app
+                        .credits_header_rect
+                        .is_some_and(|rect| rect.contains(pos));
+                    if app.confirm_popup.is_none() && app.model_selector.is_none() {
+                        match mouse.kind {
+                            MouseEventKind::Moved => {
+                                if app.hovering_credits != over_credits {
+                                    app.hovering_credits = over_credits;
+                                    set_cursor_shape(over_credits);
+                                }
+                            }
+                            MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
+                                if over_credits {
+                                    let _ = opener::open(CREDITS_URL);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Event::Key(key) => {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
@@ -283,6 +376,8 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                     }
                     _ => {}
                 }
+                }
+                _ => {}
             }
         }
     }
