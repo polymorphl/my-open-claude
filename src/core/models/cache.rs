@@ -1,6 +1,6 @@
 //! 24h cache for OpenRouter models list.
 
-use crate::core::model_info::ModelInfo;
+use super::info::ModelInfo;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;

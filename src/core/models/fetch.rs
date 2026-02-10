@@ -5,9 +5,9 @@ use std::error::Error;
 use std::io;
 
 use crate::core::config::Config;
-use crate::core::models_cache;
 
-pub use crate::core::model_info::ModelInfo;
+use super::cache;
+use super::info::ModelInfo;
 
 /// Filter models by query (case-insensitive match on id or name).
 pub fn filter_models<'a>(models: &'a [ModelInfo], query: &str) -> Vec<&'a ModelInfo> {
@@ -23,7 +23,7 @@ pub fn filter_models<'a>(models: &'a [ModelInfo], query: &str) -> Vec<&'a ModelI
 
 /// Resolve model ID to display name. Uses cached models if available; otherwise returns the ID (slug).
 pub fn resolve_model_display_name(model_id: &str) -> String {
-    models_cache::load_cached_models()
+    cache::load_cached_models()
         .and_then(|models| {
             models
                 .into_iter()
@@ -38,7 +38,7 @@ pub fn resolve_model_display_name(model_id: &str) -> String {
 pub async fn fetch_models_with_tools(
     config: &Config,
 ) -> Result<Vec<ModelInfo>, Box<dyn Error + Send + Sync>> {
-    if let Some(mut cached) = models_cache::load_cached_models() {
+    if let Some(mut cached) = cache::load_cached_models() {
         cached.sort_by(|a, b| a.name.cmp(&b.name));
         return Ok(cached);
     }
@@ -64,7 +64,7 @@ pub async fn fetch_models_with_tools(
         .collect();
 
     model_infos.sort_by(|a, b| a.name.cmp(&b.name));
-    if let Err(e) = models_cache::save_models_to_cache(&model_infos) {
+    if let Err(e) = cache::save_models_to_cache(&model_infos) {
         eprintln!("Warning: failed to save models cache: {}", e);
     }
     Ok(model_infos)

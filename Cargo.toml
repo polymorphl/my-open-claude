@@ -10,6 +10,7 @@ tokio = { version = "1", features = [
   "macros",
   "rt-multi-thread",
 ] } # async runtime
+futures = "0.3" # StreamExt for create_stream_byot
 async-openai = { version = "=0.32.4", features = ["byot", "chat-completion"] }
 clap = { version = "4.3.14", features = ["derive"] } # CLI argument parsing
 serde = { version = "1.0", features = ["derive"] }
