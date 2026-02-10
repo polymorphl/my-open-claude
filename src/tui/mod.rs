@@ -6,7 +6,7 @@ mod draw;
 mod text;
 
 #[allow(unused_imports)]
-pub use app::{App, ChatMessage, ConfirmPopup};
+pub use app::{App, ChatMessage, ConfirmPopup, ModelSelectorState};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
@@ -20,8 +20,15 @@ use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
 use crate::core::llm;
+use crate::core::models::{self, filter_models};
+use crate::core::persistence;
 
 use constants::SUGGESTIONS;
+
+enum ModelSelectorAction {
+    Close,
+    Select(models::ModelInfo),
+}
 use draw::draw;
 use text::line_count_before_last;
 
@@ -63,11 +70,31 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
         })?,
     );
 
-    let mut app = App::new(config.model_id.clone());
+    let model_name = models::resolve_model_display_name(&config.model_id);
+    let mut app = App::new(config.model_id.clone(), model_name);
     let mut api_messages: Option<Vec<Value>> = None;
     let mut pending_chat: Option<(mpsc::Receiver<String>, mpsc::Receiver<Result<llm::ChatResult, String>>)> = None;
+    let mut pending_model_fetch: Option<mpsc::Receiver<Result<Vec<models::ModelInfo>, String>>> = None;
 
     loop {
+        if let Some(ref fetch_rx) = pending_model_fetch {
+            if let Ok(result) = fetch_rx.try_recv() {
+                if let Some(ref mut selector) = app.model_selector {
+                    match result {
+                        Ok(models) => {
+                            selector.models = models;
+                            selector.selected_index = 0;
+                            selector.fetch_error = None;
+                        }
+                        Err(e) => {
+                            selector.fetch_error = Some(e);
+                        }
+                    }
+                }
+                pending_model_fetch = None;
+            }
+        }
+
         if let Some((ref progress_rx, ref result_rx)) = pending_chat {
             while let Ok(msg) = progress_rx.try_recv() {
                 app.push_tool_log(msg);
@@ -86,6 +113,9 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    break;
+                }
 
                 if let Some(popup) = app.confirm_popup.take() {
                     let confirmed = matches!(key.code, KeyCode::Char('y') | KeyCode::Char('Y'));
@@ -94,6 +124,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                     if confirmed || cancelled {
                         let result = rt.block_on(llm::chat_resume(
                             config.as_ref(),
+                            &app.current_model_id,
                             popup.state,
                             confirmed,
                         ));
@@ -102,6 +133,96 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                     } else {
                         app.confirm_popup = Some(popup);
                     }
+                    continue;
+                }
+
+                if app.model_selector.is_some() {
+                    let action = if let Some(ref mut selector) = app.model_selector {
+                        match key.code {
+                            KeyCode::Backspace => {
+                                selector.filter.pop();
+                            }
+                            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                selector.filter.push(c);
+                            }
+                            _ => {}
+                        }
+                        let filtered = filter_models(&selector.models, &selector.filter);
+                        match key.code {
+                            KeyCode::Esc => Some(ModelSelectorAction::Close),
+                            KeyCode::Up => {
+                                selector.selected_index = selector.selected_index.saturating_sub(1);
+                                None
+                            }
+                            KeyCode::Down => {
+                                if !filtered.is_empty() {
+                                    selector.selected_index = (selector.selected_index + 1)
+                                        .min(filtered.len().saturating_sub(1));
+                                }
+                                None
+                            }
+                            KeyCode::Enter => {
+                                if selector.fetch_error.is_none()
+                                    && selector.selected_index < filtered.len()
+                                {
+                                    Some(ModelSelectorAction::Select(
+                                        filtered[selector.selected_index].clone(),
+                                    ))
+                                } else {
+                                    None
+                                }
+                            }
+                            KeyCode::Backspace | KeyCode::Char(_) => {
+                                selector.selected_index = selector
+                                    .selected_index
+                                    .min(filtered.len().saturating_sub(1));
+                                None
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(action) = action {
+                        match action {
+                            ModelSelectorAction::Close => {
+                                app.model_selector = None;
+                                pending_model_fetch = None;
+                            }
+                            ModelSelectorAction::Select(model) => {
+                                app.current_model_id = model.id.clone();
+                                app.model_name = model.name.clone();
+                                let _ = persistence::save_last_model(&model.id);
+                                app.model_selector = None;
+                                pending_model_fetch = None;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Alt+M: Option+M on macOS often sends µ (U+00B5) instead of Char+m with ALT modifier
+                let open_model_selector = (key.code, key.modifiers) == (KeyCode::Char('m'), KeyModifiers::ALT)
+                    || key.code == KeyCode::Char('\u{00B5}') // µ = Option+M on Mac US keyboard
+                    || key.code == KeyCode::F(2); // F2 as fallback (works on all platforms)
+                if open_model_selector {
+                    let config = Arc::clone(&config);
+                    let rt_clone = Arc::clone(&rt);
+                    let (tx, rx) = mpsc::channel();
+                    app.model_selector = Some(app::ModelSelectorState {
+                        models: vec![],
+                        selected_index: 0,
+                        list_state: ratatui::widgets::ListState::default(),
+                        fetch_error: None,
+                        filter: String::new(),
+                    });
+                    pending_model_fetch = Some(rx);
+                    thread::spawn(move || {
+                        let result = rt_clone
+                            .block_on(models::fetch_models_with_tools(config.as_ref()))
+                            .map_err(|e| e.to_string());
+                        let _ = tx.send(result);
+                    });
                     continue;
                 }
 
@@ -128,6 +249,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                             let mode = SUGGESTIONS[app.selected_suggestion].to_string();
                             let prev_messages = api_messages.clone();
 
+                            let model_id = app.current_model_id.clone();
                             thread::spawn(move || {
                                 let on_progress: llm::OnProgress = Box::new(move |s| {
                                     let _ = progress_tx.send(s.to_string());
@@ -135,6 +257,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                                 let result = rt
                                     .block_on(llm::chat(
                                         config.as_ref(),
+                                        &model_id,
                                         &input,
                                         &mode,
                                         None,
