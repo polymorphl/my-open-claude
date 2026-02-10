@@ -65,24 +65,6 @@ pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
     spans
 }
 
-/// Count display lines for messages up to (but not including) the last one.
-/// Used to scroll to the start of a new assistant response.
-pub(super) fn line_count_before_last(messages: &[super::app::ChatMessage], width: usize) -> usize {
-    if messages.len() <= 1 {
-        return 0;
-    }
-    let mut count = 0;
-    for msg in &messages[..messages.len() - 1] {
-        count += match msg {
-            super::app::ChatMessage::User(s) | super::app::ChatMessage::Assistant(s) => {
-                1 + wrap_message(s, width).len()
-            }
-            super::app::ChatMessage::ToolLog(_) | super::app::ChatMessage::Thinking => 1,
-        };
-    }
-    count
-}
-
 /// Split a message into display lines respecting message newlines, then wrap to `width`.
 pub(super) fn wrap_message(msg: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();

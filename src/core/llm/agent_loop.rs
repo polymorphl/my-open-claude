@@ -1,0 +1,148 @@
+//! Agent loop: streaming, tool execution, repeat until done.
+
+use async_openai::config::OpenAIConfig;
+use async_openai::Client;
+use futures::StreamExt;
+use serde_json::{Value, json};
+use std::sync::Arc;
+
+use crate::core::confirm::ConfirmDestructive;
+use crate::core::config::Config;
+use crate::core::tools;
+
+use super::tool_execution;
+use super::stream::{merge_tool_call_delta, MAX_CONTENT_BYTES};
+use super::{map_api_error, ChatError, ChatResult};
+
+fn make_complete(
+    content: &str,
+    tool_log: &[String],
+    messages: &[Value],
+) -> ChatResult {
+    ChatResult::Complete {
+        content: content.to_string(),
+        tool_log: tool_log.to_vec(),
+        messages: messages.to_vec(),
+    }
+}
+
+/// Run the agent loop: call API, stream response, execute tools, repeat.
+pub(super) async fn run_agent_loop(
+    client: &Client<OpenAIConfig>,
+    _config: &Config,
+    model: &str,
+    tools_defs: &[Value],
+    tools_list: &[Box<dyn tools::Tool>],
+    messages: &mut Arc<Vec<Value>>,
+    tool_log: &mut Arc<Vec<String>>,
+    mode: &str,
+    confirm_destructive: &Option<ConfirmDestructive>,
+    on_progress: Option<&(dyn Fn(&str) + Send)>,
+    on_content_chunk: Option<&(dyn Fn(&str) + Send)>,
+) -> Result<ChatResult, ChatError> {
+    loop {
+        if let Some(ref progress) = on_progress {
+            progress("Calling API...");
+        }
+        let mut stream = client
+            .chat()
+            .create_stream_byot::<_, Value>(json!({
+                "model": model,
+                "messages": messages.as_ref(),
+                "tool_choice": "auto",
+                "tools": tools_defs,
+                "stream": true,
+            }))
+            .await
+            .map_err(map_api_error)?;
+
+        let mut full_content = String::new();
+        let mut accumulated_tool_calls: Vec<Value> = Vec::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(map_api_error)?;
+
+            if let Some(err) = chunk.get("error") {
+                let msg = err
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error");
+                return Err(ChatError::ApiMessage(msg.to_string()));
+            }
+
+            let choices = chunk.get("choices").and_then(|c| c.as_array());
+            let Some(choices) = choices else { continue };
+            let Some(choice) = choices.first() else { continue };
+            let delta = &choice["delta"];
+
+            if let Some(content) = delta["content"].as_str() {
+                if !content.is_empty() && full_content.len() + content.len() <= MAX_CONTENT_BYTES {
+                    full_content.push_str(content);
+                    if let Some(ref cb) = on_content_chunk {
+                        cb(content);
+                    }
+                } else if full_content.len() >= MAX_CONTENT_BYTES {
+                    break;
+                }
+            }
+
+            if let Some(tc_arr) = delta["tool_calls"].as_array() {
+                for tc in tc_arr {
+                    merge_tool_call_delta(&mut accumulated_tool_calls, tc);
+                }
+            }
+        }
+
+        let tool_calls_opt = if accumulated_tool_calls.is_empty() {
+            None
+        } else {
+            Some(accumulated_tool_calls)
+        };
+
+        let assistant_message = if let Some(ref tcs) = tool_calls_opt {
+            json!({
+                "role": "assistant",
+                "content": full_content,
+                "tool_calls": tcs.iter().map(|tc| json!({
+                    "id": tc["id"].as_str().unwrap_or(""),
+                    "type": "function",
+                    "function": tc["function"].clone()
+                })).collect::<Vec<_>>()
+            })
+        } else {
+            json!({
+                "role": "assistant",
+                "content": full_content
+            })
+        };
+
+        Arc::make_mut(messages).push(assistant_message.clone());
+
+        let tool_calls_opt = assistant_message
+            .get("tool_calls")
+            .and_then(|v| v.as_array());
+
+        let Some(tool_calls) = tool_calls_opt else {
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
+        };
+
+        if tool_calls.is_empty() {
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
+        }
+
+        for tool_call in tool_calls {
+            if let Some(needs_confirmation) = tool_execution::execute_tool_call(
+                tool_call,
+                tools_list,
+                mode,
+                confirm_destructive,
+                tools_defs,
+                messages,
+                tool_log,
+                on_progress,
+            )? {
+                return Ok(needs_confirmation);
+            }
+        }
+    }
+}
