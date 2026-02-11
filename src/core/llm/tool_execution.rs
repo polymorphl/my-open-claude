@@ -10,8 +10,45 @@ use super::ChatResult;
 use super::ConfirmState;
 
 const WRITE_NAME: &str = "Write";
+const EDIT_NAME: &str = "Edit";
 const BASH_NAME: &str = "Bash";
-const ASK_MODE_DISABLED: &str = "Ask mode: file creation/modification and command execution are disabled. Use only the Read tool to read files, then respond with an explanation.";
+const READ_NAME: &str = "Read";
+const GREP_NAME: &str = "Grep";
+const LIST_DIR_NAME: &str = "ListDir";
+const GLOB_NAME: &str = "Glob";
+const ASK_MODE_DISABLED: &str = "Ask mode: file modification and command execution are disabled. Use Read, Grep, ListDir, and Glob tools to explore, then respond with an explanation.";
+
+/// Max output size for Read and Bash tool results (32 KB).
+const MAX_OUTPUT_LARGE: usize = 32 * 1024;
+/// Max output size for Grep, ListDir, Glob tool results (16 KB).
+const MAX_OUTPUT_SMALL: usize = 16 * 1024;
+
+/// Truncate a tool result string to the given max bytes, appending a notice.
+pub(crate) fn truncate_tool_output(output: String, max_bytes: usize) -> String {
+    if output.len() <= max_bytes {
+        return output;
+    }
+    let total = output.len();
+    // Find a safe UTF-8 boundary near max_bytes.
+    let mut end = max_bytes;
+    while end > 0 && !output.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}\n\n[... truncated, {} bytes total]",
+        &output[..end],
+        total
+    )
+}
+
+/// Return the max output size for a given tool name, or None for unlimited.
+pub(crate) fn output_limit_for(tool_name: &str) -> Option<usize> {
+    match tool_name {
+        READ_NAME | BASH_NAME => Some(MAX_OUTPUT_LARGE),
+        GREP_NAME | LIST_DIR_NAME | GLOB_NAME => Some(MAX_OUTPUT_SMALL),
+        _ => None,
+    }
+}
 
 /// Interaction mode: "Ask" = explanations only (no write/bash), "Build" = all tools.
 pub fn is_ask_mode(mode: &str) -> bool {
@@ -50,7 +87,7 @@ pub(super) fn execute_tool_call(
         progress(&log_line);
     }
 
-    let result = if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME) {
+    let result = if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
         ASK_MODE_DISABLED.to_string()
     } else {
         match tools_list.iter().find(|t| t.name() == name) {
@@ -96,10 +133,74 @@ pub(super) fn execute_tool_call(
         }
     };
 
+    // Truncate large tool outputs to stay within context budget.
+    let result = match output_limit_for(name) {
+        Some(limit) => truncate_tool_output(result, limit),
+        None => result,
+    };
+
     std::sync::Arc::make_mut(messages).push(json!({
         "role": "tool",
         "tool_call_id": id,
         "content": result,
     }));
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_ask_mode_true() {
+        assert!(is_ask_mode("ask"));
+        assert!(is_ask_mode("Ask"));
+        assert!(is_ask_mode("ASK"));
+    }
+
+    #[test]
+    fn is_ask_mode_false() {
+        assert!(!is_ask_mode("Build"));
+        assert!(!is_ask_mode("build"));
+    }
+
+    #[test]
+    fn output_limit_for_read_and_bash() {
+        assert_eq!(output_limit_for("Read"), Some(32 * 1024));
+        assert_eq!(output_limit_for("Bash"), Some(32 * 1024));
+    }
+
+    #[test]
+    fn output_limit_for_grep_listdir_glob() {
+        assert_eq!(output_limit_for("Grep"), Some(16 * 1024));
+        assert_eq!(output_limit_for("ListDir"), Some(16 * 1024));
+        assert_eq!(output_limit_for("Glob"), Some(16 * 1024));
+    }
+
+    #[test]
+    fn output_limit_for_unknown() {
+        assert_eq!(output_limit_for("Edit"), None);
+        assert_eq!(output_limit_for("Write"), None);
+    }
+
+    #[test]
+    fn truncate_tool_output_under_limit() {
+        let s = "short output";
+        assert_eq!(truncate_tool_output(s.to_string(), 100), s);
+    }
+
+    #[test]
+    fn truncate_tool_output_over_limit() {
+        let s = "a".repeat(50);
+        let result = truncate_tool_output(s.clone(), 20);
+        assert!(result.contains("[... truncated, 50 bytes total]"));
+        assert!(result.len() < 50 + 35);
+    }
+
+    #[test]
+    fn truncate_tool_output_utf8_boundary() {
+        let s = "é".repeat(10); // 2 bytes per char
+        let result = truncate_tool_output(s, 5);
+        assert!(result.contains("truncated"));
+    }
 }

@@ -1,5 +1,6 @@
 //! Event handlers for the TUI: keyboard and mouse.
 
+mod chat_spawn;
 mod confirm;
 mod history_selector;
 mod input;
@@ -9,6 +10,7 @@ use crossterm::event::{KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::layout::Position;
 use std::sync::mpsc;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -19,9 +21,79 @@ use crate::core::llm;
 use crate::core::models::ModelInfo;
 
 use super::app::App;
+use super::constants;
 use super::shortcuts::Shortcut;
 
 const CREDITS_URL: &str = "https://openrouter.ai/settings/credits";
+
+fn handle_model_selector(
+    key_code: KeyCode,
+    modifiers: crossterm::event::KeyModifiers,
+    app: &mut App,
+    pending_model_fetch: &mut Option<mpsc::Receiver<Result<Vec<ModelInfo>, String>>>,
+) -> HandleResult {
+    let selector = app.model_selector.as_mut().expect("model_selector is Some");
+    let action = model_selector::handle_model_selector_key(key_code, modifiers, selector);
+    match action {
+        model_selector::ModelSelectorAction::Close => {
+            app.model_selector = None;
+            *pending_model_fetch = None;
+        }
+        model_selector::ModelSelectorAction::Select(model) => {
+            app.current_model_id = model.id.clone();
+            app.model_name = model.name.clone();
+            app.context_length = model.context_length;
+            app.token_usage = None;
+            let _ = crate::core::persistence::save_last_model(&model.id);
+            app.model_selector = None;
+            *pending_model_fetch = None;
+        }
+        model_selector::ModelSelectorAction::Keep => {}
+    }
+    HandleResult::Continue
+}
+
+fn handle_history_selector(
+    key_code: KeyCode,
+    modifiers: crossterm::event::KeyModifiers,
+    app: &mut App,
+    api_messages: &mut Option<Vec<Value>>,
+) -> HandleResult {
+    let selector = app.history_selector.as_mut().expect("history_selector is Some");
+    let action = history_selector::handle_history_selector_key(key_code, modifiers, selector);
+    match action {
+        history_selector::HistorySelectorAction::Close => {
+            app.history_selector = None;
+        }
+        history_selector::HistorySelectorAction::Load { id } => {
+            if let Some(messages) = history::load_conversation(&id) {
+                app.set_messages_from_api(&messages);
+                app.set_conversation_id(Some(id.clone()));
+                app.scroll = super::app::ScrollPosition::Bottom;
+                app.token_usage = Some(llm::TokenUsage::estimated_from_messages(&messages));
+                *api_messages = Some(messages);
+            }
+            app.history_selector = None;
+        }
+        history_selector::HistorySelectorAction::Delete { id } => {
+            let _ = history::delete_conversation(&id);
+            selector.conversations.retain(|c| c.id != id);
+            let filtered = history::filter_conversations(&selector.conversations, &selector.filter);
+            selector.selected_index = selector
+                .selected_index
+                .min(filtered.len().saturating_sub(1));
+        }
+        history_selector::HistorySelectorAction::Rename { id, new_title } => {
+            if let Ok(()) = history::rename_conversation(&id, &new_title) {
+                if let Some(meta) = selector.conversations.iter_mut().find(|c| c.id == id) {
+                    meta.title = new_title;
+                }
+            }
+        }
+        history_selector::HistorySelectorAction::Keep => {}
+    }
+    HandleResult::Continue
+}
 
 fn handle_shortcut(
     shortcut: Shortcut,
@@ -38,7 +110,7 @@ fn handle_shortcut(
             if app.is_dirty() {
                 if let Some(msgs) = api_messages.as_ref() {
                     if !msgs.is_empty() {
-                        let title = first_message_preview(msgs, 60);
+                        let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
                         if let Ok(id) =
                             history::save_conversation(app.conversation_id(), &title, msgs, config.as_ref())
                         {
@@ -54,7 +126,7 @@ fn handle_shortcut(
             if app.is_dirty() {
                 if let Some(msgs) = api_messages.as_ref() {
                     if !msgs.is_empty() {
-                        let title = first_message_preview(msgs, 60);
+                        let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
                         let _ = history::save_conversation(
                             app.conversation_id(),
                             &title,
@@ -82,7 +154,9 @@ fn handle_shortcut(
 pub struct PendingChat {
     pub progress_rx: mpsc::Receiver<String>,
     pub stream_rx: mpsc::Receiver<String>,
-    pub result_rx: mpsc::Receiver<Result<llm::ChatResult, String>>,
+    pub result_rx: mpsc::Receiver<Result<llm::ChatResult, llm::ChatError>>,
+    /// Token to cancel the in-flight request.
+    pub cancel_token: CancellationToken,
 }
 
 /// Result of handling an event: continue the loop or exit.
@@ -124,10 +198,10 @@ pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> Handl
                 }
             }
             MouseEventKind::ScrollUp => {
-                app.scroll_up(3);
+                app.scroll_up(constants::SCROLL_LINES_SMALL);
             }
             MouseEventKind::ScrollDown => {
-                app.scroll_down(3);
+                app.scroll_down(constants::SCROLL_LINES_SMALL);
             }
             _ => {}
         }
@@ -173,12 +247,16 @@ pub fn handle_key(
         }
     }
 
-    // Esc alone: start of Option+key sequence (no popup open)
+    // Esc: cancel in-flight request if one is pending, otherwise start Option+key sequence.
     if Shortcut::is_escape(&key)
         && app.confirm_popup.is_none()
         && app.model_selector.is_none()
         && app.history_selector.is_none()
     {
+        if let Some(pc) = pending_chat.as_ref() {
+            pc.cancel_token.cancel();
+            return HandleResult::Continue;
+        }
         app.escape_pending = true;
         return HandleResult::Continue;
     }
@@ -201,67 +279,13 @@ pub fn handle_key(
 
     // Popups (confirm, history, model) - handled before general shortcuts
     // History selector popup
-    if let Some(ref mut selector) = app.history_selector {
-        let action = history_selector::handle_history_selector_key(
-            key.code,
-            key.modifiers,
-            selector,
-        );
-        match action {
-            history_selector::HistorySelectorAction::Close => {
-                app.history_selector = None;
-            }
-            history_selector::HistorySelectorAction::Load { id } => {
-                if let Some(messages) = history::load_conversation(&id) {
-                    app.set_messages_from_api(&messages);
-                    app.set_conversation_id(Some(id.clone()));
-                    *api_messages = Some(messages);
-                }
-                app.history_selector = None;
-            }
-            history_selector::HistorySelectorAction::Delete { id } => {
-                let _ = history::delete_conversation(&id);
-                selector.conversations.retain(|c| c.id != id);
-                let filtered =
-                    history::filter_conversations(&selector.conversations, &selector.filter);
-                selector.selected_index = selector
-                    .selected_index
-                    .min(filtered.len().saturating_sub(1));
-            }
-            history_selector::HistorySelectorAction::Rename { id, new_title } => {
-                if let Ok(()) = history::rename_conversation(&id, &new_title) {
-                    if let Some(meta) = selector.conversations.iter_mut().find(|c| c.id == id) {
-                        meta.title = new_title;
-                    }
-                }
-            }
-            history_selector::HistorySelectorAction::Keep => {}
-        }
-        return HandleResult::Continue;
+    if app.history_selector.is_some() {
+        return handle_history_selector(key.code, key.modifiers, app, api_messages);
     }
 
     // Model selector popup
-    if let Some(ref mut selector) = app.model_selector {
-        let action = model_selector::handle_model_selector_key(
-            key.code,
-            key.modifiers,
-            selector,
-        );
-        match action {
-            model_selector::ModelSelectorAction::Close => {
-                app.model_selector = None;
-                *pending_model_fetch = None;
-            }
-            model_selector::ModelSelectorAction::Select(model) => {
-                app.current_model_id = model.id.clone();
-                app.model_name = model.name.clone();
-                let _ = crate::core::persistence::save_last_model(&model.id);
-                app.model_selector = None;
-                *pending_model_fetch = None;
-            }
-            model_selector::ModelSelectorAction::Keep => {}
-        }
-        return HandleResult::Continue;
+    if app.model_selector.is_some() {
+        return handle_model_selector(key.code, key.modifiers, app, pending_model_fetch);
     }
 
     // Main input handling

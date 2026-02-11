@@ -16,39 +16,57 @@ src/
 │   ├── config.rs        # Configuration (env, API)
 │   ├── confirm.rs       # Confirmation abstraction (CLI/TUI)
 │   ├── credits.rs       # OpenRouter credits fetching
+│   ├── message.rs       # API message content extraction
+│   ├── paths.rs         # Config/cache/data dir paths
 │   ├── persistence.rs   # Persistence (last model used)
+│   ├── util.rs          # Generic helpers (filter_by_query)
+│   ├── history/         # Conversation persistence
+│   │   ├── mod.rs       # Public API, sanitize, filter
+│   │   └── storage.rs   # Index/conv file I/O
+│   ├── llm/             # Agent loop, chat, streaming
+│   │   ├── mod.rs       # Chat, chat_resume, public API
+│   │   ├── agent_loop.rs# Streaming loop, tool dispatch
+│   │   ├── context.rs   # Token estimate, truncation
+│   │   ├── tool_execution.rs  # Single tool call execution
+│   │   ├── error.rs     # LLM error types
+│   │   └── stream.rs    # Stream chunk parsing
 │   ├── models/          # Model discovery, filtering, caching
 │   │   ├── mod.rs       # Public re-exports
 │   │   ├── info.rs      # ModelInfo struct
 │   │   ├── cache.rs     # 24h disk cache
 │   │   └── fetch.rs     # API fetch, filter, resolve
-│   ├── llm/             # Agent loop, chat, streaming
-│   │   ├── mod.rs       # Chat, chat_resume, public API
-│   │   ├── agent_loop.rs# Streaming loop, tool dispatch
-│   │   ├── tool_execution.rs  # Single tool call execution
-│   │   ├── error.rs     # LLM error types
-│   │   └── stream.rs    # Stream chunk parsing
 │   └── tools/           # Agent tools
-│       ├── mod.rs       # Tool trait, tool registry
+│       ├── mod.rs       # Tool trait, registry, definitions cache
 │       ├── bash.rs      # Command execution
+│       ├── edit.rs      # Targeted search-and-replace
+│       ├── glob_tool.rs # Glob pattern file search
+│       ├── grep.rs      # Regex file search
+│       ├── ignore.rs    # Dir traversal ignore patterns
+│       ├── list_dir.rs  # Directory listing
 │       ├── read.rs      # File reading
 │       └── write.rs     # File writing
 └── tui/                 # Text interface (ratatui)
     ├── mod.rs           # Main loop, credits, pending chat
     ├── app.rs           # Application state
+    ├── chat_result.rs   # handle_chat_result, save_conversation_if_dirty
+    ├── constants.rs     # UI constants (suggestions, colors, scroll, poll)
+    ├── shortcuts.rs     # Keyboard shortcut mapping
+    ├── text.rs          # Markdown parsing, line wrapping
     ├── handlers/        # Keyboard/mouse event handling
     │   ├── mod.rs       # Orchestrator, handle_key, handle_mouse
+    │   ├── chat_spawn.rs# Spawn chat/chat_resume in background
     │   ├── confirm.rs   # Confirm popup (y/n)
-    │   ├── model_selector.rs  # Model picker popup
-    │   └── input.rs     # Main input, send, scroll
-    ├── draw/            # Widget rendering
-    │   ├── mod.rs       # Layout orchestration
-    │   ├── header.rs    # Logo, title, model, credits
-    │   ├── history.rs   # Chat history with scrollbar
-    │   ├── input.rs     # Input block, suggestions, bottom bar
-    │   └── popups.rs    # Confirm popup, model selector popup
-    ├── constants.rs     # UI constants (suggestions, colors)
-    └── text.rs          # Text formatting and wrapping
+    │   ├── history_selector.rs  # History picker
+    │   ├── input.rs     # Main input, send, scroll
+    │   └── model_selector.rs    # Model picker popup
+    └── draw/            # Widget rendering
+        ├── mod.rs       # Layout orchestration
+        ├── header.rs    # Logo, title, model, credits
+        ├── history.rs   # Chat history with scrollbar
+        ├── history_selector_popup.rs
+        ├── input.rs     # Input block, suggestions, bottom bar
+        ├── popups.rs    # Confirm popup, model selector popup
+        └── welcome_mascot.rs
 ```
 
 ## Dependency Rules
@@ -65,8 +83,10 @@ src/
 | New agent tool | `core/tools/<name>.rs` |
 | LLM / agent logic | `core/llm/` |
 | New models submodule | `core/models/<name>.rs` |
-| Rendering, widgets, layout | `tui/draw/` (header, history, input, popups) |
-| Event handling (keyboard, mouse) | `tui/handlers/` (confirm, model_selector, input) |
+| Persistence (index, files) | `core/history/storage.rs` |
+| Rendering, widgets, layout | `tui/draw/` |
+| Event handling (keyboard, mouse) | `tui/handlers/` |
+| Chat result handling, save logic | `tui/chat_result.rs` |
 | App state, message structures | `tui/app.rs` |
 | CLI parsing, orchestration | `main.rs` |
 
@@ -76,4 +96,9 @@ src/
 - Error types specific to a domain: `core/llm/error.rs`.
 - Document modules with `//!` at the top of the file.
 - Shared helpers stay in the relevant module or a dedicated submodule.
-- If a file exceeds ~400 lines, extract logic into a submodule.
+
+## File Length Guidelines
+
+- **~250 lines**: Consider extracting cohesive blocks into a submodule (e.g. `handle_model_selector`, `handle_history_selector`).
+- **~400 lines**: Extract logic into a submodule to keep files focused.
+- Extract when a file mixes distinct responsibilities (e.g. handlers: shortcuts vs popups vs input).

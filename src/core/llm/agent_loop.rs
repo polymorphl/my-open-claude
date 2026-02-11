@@ -5,24 +5,28 @@ use async_openai::Client;
 use futures::StreamExt;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::core::confirm::ConfirmDestructive;
 use crate::core::config::Config;
 use crate::core::tools;
 
+use super::context;
 use super::tool_execution;
-use super::stream::{merge_tool_call_delta, MAX_CONTENT_BYTES};
+use super::stream::{merge_tool_call_delta, parse_usage, TokenUsage, MAX_CONTENT_BYTES};
 use super::{map_api_error, ChatError, ChatResult};
 
 fn make_complete(
     content: &str,
     tool_log: &[String],
     messages: &[Value],
+    usage: TokenUsage,
 ) -> ChatResult {
     ChatResult::Complete {
         content: content.to_string(),
         tool_log: tool_log.to_vec(),
         messages: messages.to_vec(),
+        usage,
     }
 }
 
@@ -31,6 +35,7 @@ pub(super) async fn run_agent_loop(
     client: &Client<OpenAIConfig>,
     _config: &Config,
     model: &str,
+    context_length: u64,
     tools_defs: &[Value],
     tools_list: &[Box<dyn tools::Tool>],
     messages: &mut Arc<Vec<Value>>,
@@ -39,27 +44,65 @@ pub(super) async fn run_agent_loop(
     confirm_destructive: &Option<ConfirmDestructive>,
     on_progress: Option<&(dyn Fn(&str) + Send)>,
     on_content_chunk: Option<&(dyn Fn(&str) + Send)>,
+    cancel_token: Option<&CancellationToken>,
 ) -> Result<ChatResult, ChatError> {
+    let mut last_usage = TokenUsage::default();
+
     loop {
+        // Check cancellation before starting a new API call.
+        if cancel_token.is_some_and(|t| t.is_cancelled()) {
+            return Err(ChatError::Cancelled);
+        }
+
+        // Truncate context if it exceeds the model's window.
+        context::truncate_if_needed(Arc::make_mut(messages), context_length);
+
         if let Some(ref progress) = on_progress {
             progress("Calling API...");
         }
-        let mut stream = client
-            .chat()
-            .create_stream_byot::<_, Value>(json!({
-                "model": model,
-                "messages": messages.as_ref(),
-                "tool_choice": "auto",
-                "tools": tools_defs,
-                "stream": true,
-            }))
-            .await
-            .map_err(map_api_error)?;
+
+        // Start the streaming API call, racing against cancellation.
+        let chat_api = client.chat();
+        let stream_future = chat_api.create_stream_byot::<_, Value>(json!({
+            "model": model,
+            "messages": messages.as_ref(),
+            "tool_choice": "auto",
+            "tools": tools_defs,
+            "stream": true,
+        }));
+
+        let stream_result = if let Some(token) = cancel_token {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    return Err(ChatError::Cancelled);
+                }
+                result = stream_future => result,
+            }
+        } else {
+            stream_future.await
+        };
+
+        let mut stream = stream_result.map_err(map_api_error)?;
 
         let mut full_content = String::new();
         let mut accumulated_tool_calls: Vec<Value> = Vec::new();
 
-        while let Some(chunk_result) = stream.next().await {
+        // Read stream chunks, racing against cancellation.
+        loop {
+            let chunk_opt = if let Some(token) = cancel_token {
+                tokio::select! {
+                    biased;
+                    _ = token.cancelled() => {
+                        return Err(ChatError::Cancelled);
+                    }
+                    chunk = stream.next() => chunk,
+                }
+            } else {
+                stream.next().await
+            };
+
+            let Some(chunk_result) = chunk_opt else { break };
             let chunk = chunk_result.map_err(map_api_error)?;
 
             if let Some(err) = chunk.get("error") {
@@ -68,6 +111,11 @@ pub(super) async fn run_agent_loop(
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown error");
                 return Err(ChatError::ApiMessage(msg.to_string()));
+            }
+
+            // Capture token usage from the final chunk (OpenRouter includes it).
+            if let Some(usage) = parse_usage(&chunk) {
+                last_usage = usage;
             }
 
             let choices = chunk.get("choices").and_then(|c| c.as_array());
@@ -118,19 +166,32 @@ pub(super) async fn run_agent_loop(
 
         Arc::make_mut(messages).push(assistant_message.clone());
 
+        // Summarize Write/Edit tool arguments to reduce context bloat on subsequent turns.
+        context::summarize_write_args_in_last(Arc::make_mut(messages));
+
         let tool_calls_opt = assistant_message
             .get("tool_calls")
             .and_then(|v| v.as_array());
 
         let Some(tool_calls) = tool_calls_opt else {
-            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref(), last_usage.clone()));
         };
 
         if tool_calls.is_empty() {
-            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref(), last_usage.clone()));
+        }
+
+        // Check cancellation before executing tools.
+        if cancel_token.is_some_and(|t| t.is_cancelled()) {
+            return Err(ChatError::Cancelled);
         }
 
         for tool_call in tool_calls {
+            // Check cancellation before each tool call.
+            if cancel_token.is_some_and(|t| t.is_cancelled()) {
+                return Err(ChatError::Cancelled);
+            }
+
             if let Some(needs_confirmation) = tool_execution::execute_tool_call(
                 tool_call,
                 tools_list,
