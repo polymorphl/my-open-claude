@@ -11,19 +11,22 @@ use crate::core::confirm::ConfirmDestructive;
 use crate::core::config::Config;
 use crate::core::tools;
 
+use super::context;
 use super::tool_execution;
-use super::stream::{merge_tool_call_delta, MAX_CONTENT_BYTES};
+use super::stream::{merge_tool_call_delta, parse_usage, TokenUsage, MAX_CONTENT_BYTES};
 use super::{map_api_error, ChatError, ChatResult};
 
 fn make_complete(
     content: &str,
     tool_log: &[String],
     messages: &[Value],
+    usage: TokenUsage,
 ) -> ChatResult {
     ChatResult::Complete {
         content: content.to_string(),
         tool_log: tool_log.to_vec(),
         messages: messages.to_vec(),
+        usage,
     }
 }
 
@@ -32,6 +35,7 @@ pub(super) async fn run_agent_loop(
     client: &Client<OpenAIConfig>,
     _config: &Config,
     model: &str,
+    context_length: u64,
     tools_defs: &[Value],
     tools_list: &[Box<dyn tools::Tool>],
     messages: &mut Arc<Vec<Value>>,
@@ -42,11 +46,16 @@ pub(super) async fn run_agent_loop(
     on_content_chunk: Option<&(dyn Fn(&str) + Send)>,
     cancel_token: Option<&CancellationToken>,
 ) -> Result<ChatResult, ChatError> {
+    let mut last_usage = TokenUsage::default();
+
     loop {
         // Check cancellation before starting a new API call.
         if cancel_token.is_some_and(|t| t.is_cancelled()) {
             return Err(ChatError::Cancelled);
         }
+
+        // Truncate context if it exceeds the model's window.
+        context::truncate_if_needed(Arc::make_mut(messages), context_length);
 
         if let Some(ref progress) = on_progress {
             progress("Calling API...");
@@ -104,6 +113,11 @@ pub(super) async fn run_agent_loop(
                 return Err(ChatError::ApiMessage(msg.to_string()));
             }
 
+            // Capture token usage from the final chunk (OpenRouter includes it).
+            if let Some(usage) = parse_usage(&chunk) {
+                last_usage = usage;
+            }
+
             let choices = chunk.get("choices").and_then(|c| c.as_array());
             let Some(choices) = choices else { continue };
             let Some(choice) = choices.first() else { continue };
@@ -152,16 +166,19 @@ pub(super) async fn run_agent_loop(
 
         Arc::make_mut(messages).push(assistant_message.clone());
 
+        // Summarize Write/Edit tool arguments to reduce context bloat on subsequent turns.
+        context::summarize_write_args_in_last(Arc::make_mut(messages));
+
         let tool_calls_opt = assistant_message
             .get("tool_calls")
             .and_then(|v| v.as_array());
 
         let Some(tool_calls) = tool_calls_opt else {
-            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref(), last_usage.clone()));
         };
 
         if tool_calls.is_empty() {
-            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
+            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref(), last_usage.clone()));
         }
 
         // Check cancellation before executing tools.

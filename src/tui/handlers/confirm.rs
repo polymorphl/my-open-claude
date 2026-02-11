@@ -9,6 +9,7 @@ use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
 use crate::core::llm;
+use crate::core::models;
 
 use super::super::app::{App, ConfirmPopup, ScrollPosition};
 use super::PendingChat;
@@ -47,6 +48,7 @@ pub(crate) fn handle_confirm_popup(
             let cancel_token_clone = cancel_token.clone();
             let config = Arc::clone(config);
             let model_id = app.current_model_id.clone();
+            let context_length = models::resolve_context_length(&model_id);
             let rt_clone = Arc::clone(rt);
             std::thread::spawn(move || {
                 let on_progress: llm::OnProgress = Box::new(move |s| {
@@ -58,6 +60,7 @@ pub(crate) fn handle_confirm_popup(
                 let result = rt_clone.block_on(llm::chat_resume(
                     config.as_ref(),
                     &model_id,
+                    context_length,
                     popup.state,
                     confirmed,
                     Some(on_progress),

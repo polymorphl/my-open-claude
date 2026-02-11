@@ -10,6 +10,7 @@ use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
 use crate::core::llm;
+use crate::core::models;
 
 use super::super::app::{App, ScrollPosition};
 use super::super::constants::SUGGESTIONS;
@@ -54,6 +55,7 @@ pub(crate) fn handle_main_input(
                 let mode = SUGGESTIONS[app.selected_suggestion].to_string();
                 let prev_messages = api_messages.clone();
                 let model_id = app.current_model_id.clone();
+                let context_length = models::resolve_context_length(&model_id);
                 std::thread::spawn(move || {
                     let on_progress: llm::OnProgress = Box::new(move |s| {
                         let _ = progress_tx.send(s.to_string());
@@ -67,6 +69,7 @@ pub(crate) fn handle_main_input(
                             &model_id,
                             &input,
                             &mode,
+                            context_length,
                             None,
                             prev_messages,
                             Some(on_progress),

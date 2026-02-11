@@ -26,11 +26,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     if let Some(prompt) = args.prompt {
+        let context_length = core::models::resolve_context_length(&config.model_id);
         let result = core::llm::chat(
             &config,
             &config.model_id,
             &prompt,
             "Build",
+            context_length,
             Some(core::confirm::default_confirm()),
             None,
             None, // No progress callback in CLI mode

@@ -1,7 +1,7 @@
 //! TUI application state: messages, input, scroll, suggestions.
 
 use crate::core::history::ConversationMeta;
-use crate::core::llm::ConfirmState;
+use crate::core::llm::{ConfirmState, TokenUsage};
 use crate::core::models::ModelInfo;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
@@ -108,10 +108,15 @@ pub struct App {
     pub(crate) escape_pending: bool,
     /// True while a chat request is in flight (used by bottom bar to show cancel hint).
     pub(crate) is_streaming: bool,
+    /// Last known token usage from the API (updated after each chat completion).
+    pub(crate) token_usage: Option<TokenUsage>,
+    /// Context window size (in tokens) for the current model.
+    pub(crate) context_length: u64,
 }
 
 impl App {
     pub fn new(model_id: String, model_name: String) -> Self {
+        let context_length = crate::core::models::resolve_context_length(&model_id);
         Self {
             messages: vec![],
             input: String::new(),
@@ -132,6 +137,8 @@ impl App {
             dirty: false,
             escape_pending: false,
             is_streaming: false,
+            token_usage: None,
+            context_length,
         }
     }
 
@@ -162,6 +169,7 @@ impl App {
         self.dirty = false;
         self.scroll = ScrollPosition::default();
         self.last_max_scroll = 0;
+        self.token_usage = None;
     }
 
     /// Populate messages from API format (user/assistant only).
