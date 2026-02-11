@@ -13,11 +13,13 @@ use super::super::constants::ACCENT;
 use super::super::text::{parse_markdown_inline, wrap_message};
 
 /// Draw a user or assistant message block (label + wrapped content).
+/// When `is_error` is true, content is displayed in red.
 fn draw_message_block(
     lines: &mut Vec<Line<'static>>,
     label: impl Into<String>,
     content: &str,
     content_width: usize,
+    is_error: bool,
 ) {
     lines.push(Line::from(vec![
         Span::styled(label.into(), Style::default().fg(Color::DarkGray)),
@@ -26,6 +28,10 @@ fn draw_message_block(
     for chunk in wrap_message(content, content_width) {
         if chunk.is_empty() {
             lines.push(Line::from(Span::raw("")));
+        } else if is_error {
+            let mut spans = vec![Span::raw("  ")];
+            spans.push(Span::styled(chunk, Style::default().fg(Color::Red)));
+            lines.push(Line::from(spans));
         } else {
             let mut spans = vec![Span::raw("  ")];
             spans.extend(parse_markdown_inline(&chunk));
@@ -48,9 +54,12 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let mut lines: Vec<Line<'static>> = Vec::new();
     for msg in &app.messages {
         match msg {
-            ChatMessage::User(s) => draw_message_block(&mut lines, "You ", s, content_width),
+            ChatMessage::User(s) => {
+                draw_message_block(&mut lines, "You ", s, content_width, false)
+            }
             ChatMessage::Assistant(s) => {
-                draw_message_block(&mut lines, "Assistant ", s, content_width)
+                let is_error = s.starts_with("Error:");
+                draw_message_block(&mut lines, "Assistant ", s, content_width, is_error)
             }
             ChatMessage::ToolLog(s) => {
                 lines.push(Line::from(Span::styled(

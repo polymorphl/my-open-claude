@@ -37,6 +37,7 @@ pub(crate) fn handle_main_input(
         (KeyCode::Enter, _) => {
             let input = app.input.trim().to_string();
             if !input.is_empty() && pending_chat.is_none() {
+                app.mark_dirty();
                 app.input.clear();
                 app.push_user(&input);
                 app.push_assistant(String::new());
@@ -99,7 +100,11 @@ pub(crate) fn handle_main_input(
             app.scroll_down(10);
             super::HandleResult::Continue
         }
-        (KeyCode::Char(c), _) => {
+        (KeyCode::Char(c), mods) => {
+            // Ignore Alt+key: user likely intended a shortcut (e.g. Alt+H)
+            if mods.contains(KeyModifiers::ALT) {
+                return super::HandleResult::Continue;
+            }
             app.input.push(c);
             super::HandleResult::Continue
         }
