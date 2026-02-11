@@ -66,12 +66,9 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let rt = Arc::new(Runtime::new().map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to create runtime: {}", e),
-        )
-    })?);
+    let rt = Arc::new(
+        Runtime::new().map_err(|e| io::Error::other(format!("Failed to create runtime: {}", e)))?,
+    );
 
     let model_name = models::resolve_model_display_name(&config.model_id);
     let mut app = App::new(config.model_id.clone(), model_name);
@@ -99,14 +96,14 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     };
 
     loop {
-        if let Some(ref credits_rx) = pending_credits_fetch {
-            if let Ok(result) = credits_rx.try_recv() {
-                if let Ok((total, used)) = result {
-                    app.credit_data = Some((total, used));
-                    app.credits_last_fetched_at = Some(Instant::now());
-                }
-                pending_credits_fetch = None;
+        if let Some(ref credits_rx) = pending_credits_fetch
+            && let Ok(result) = credits_rx.try_recv()
+        {
+            if let Ok((total, used)) = result {
+                app.credit_data = Some((total, used));
+                app.credits_last_fetched_at = Some(Instant::now());
             }
+            pending_credits_fetch = None;
         }
 
         // Re-fetch credits every 30 minutes (only after first successful fetch)
@@ -128,22 +125,22 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
             });
         }
 
-        if let Some(ref fetch_rx) = pending_model_fetch {
-            if let Ok(result) = fetch_rx.try_recv() {
-                if let Some(ref mut selector) = app.model_selector {
-                    match result {
-                        Ok(models) => {
-                            selector.models = models;
-                            selector.selected_index = 0;
-                            selector.fetch_error = None;
-                        }
-                        Err(e) => {
-                            selector.fetch_error = Some(e);
-                        }
+        if let Some(ref fetch_rx) = pending_model_fetch
+            && let Ok(result) = fetch_rx.try_recv()
+        {
+            if let Some(ref mut selector) = app.model_selector {
+                match result {
+                    Ok(models) => {
+                        selector.models = models;
+                        selector.selected_index = 0;
+                        selector.fetch_error = None;
+                    }
+                    Err(e) => {
+                        selector.fetch_error = Some(e);
                     }
                 }
-                pending_model_fetch = None;
             }
+            pending_model_fetch = None;
         }
 
         if let Some(ref mut chat) = pending_chat {
@@ -157,14 +154,22 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
             if let Ok(result) = chat.result_rx.try_recv() {
                 app.set_thinking(false);
                 app.is_streaming = false;
-                chat_result::handle_chat_result(&mut app, &mut api_messages, result, true, config.as_ref());
+                chat_result::handle_chat_result(
+                    &mut app,
+                    &mut api_messages,
+                    result,
+                    true,
+                    config.as_ref(),
+                );
                 pending_chat = None;
             }
         }
 
         terminal.draw(|f| draw(f, &mut app, f.area()))?;
 
-        if event::poll(std::time::Duration::from_millis(constants::EVENT_POLL_TIMEOUT_MS))? {
+        if event::poll(std::time::Duration::from_millis(
+            constants::EVENT_POLL_TIMEOUT_MS,
+        ))? {
             match event::read()? {
                 Event::Mouse(mouse) => {
                     let _ = handlers::handle_mouse(mouse, &mut app);
@@ -180,7 +185,11 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                         &rt,
                     );
                     if result == HandleResult::Break {
-                        chat_result::save_conversation_if_dirty(&mut app, &api_messages, config.as_ref());
+                        chat_result::save_conversation_if_dirty(
+                            &mut app,
+                            &api_messages,
+                            config.as_ref(),
+                        );
                         break;
                     }
                 }
@@ -192,4 +201,3 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     terminal.show_cursor()?;
     Ok(())
 }
-

@@ -1,6 +1,6 @@
 //! Streaming chat response: tool call delta merging, size limits, token usage.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Max tool calls to accept from a single response (guards against malformed API).
 pub(super) const MAX_TOOL_CALLS: usize = 64;
@@ -35,9 +35,18 @@ impl TokenUsage {
 pub(crate) fn parse_usage(chunk: &Value) -> Option<TokenUsage> {
     let usage = chunk.get("usage")?;
     Some(TokenUsage {
-        prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        total_tokens: usage.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        prompt_tokens: usage
+            .get("prompt_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        completion_tokens: usage
+            .get("completion_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        total_tokens: usage
+            .get("total_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
     })
 }
 
@@ -56,23 +65,23 @@ pub(crate) fn merge_tool_call_delta(acc: &mut Vec<Value>, delta_tc: &Value) {
         }));
     }
     let entry = &mut acc[index];
-    if let Some(id) = delta_tc["id"].as_str() {
-        if !id.is_empty() {
-            entry["id"] = json!(id);
-        }
+    if let Some(id) = delta_tc["id"].as_str()
+        && !id.is_empty()
+    {
+        entry["id"] = json!(id);
     }
     if let Some(fn_part) = delta_tc.get("function") {
-        if let Some(name) = fn_part["name"].as_str() {
-            if !name.is_empty() {
-                entry["function"]["name"] = json!(name);
-            }
+        if let Some(name) = fn_part["name"].as_str()
+            && !name.is_empty()
+        {
+            entry["function"]["name"] = json!(name);
         }
-        if let Some(args) = fn_part["arguments"].as_str() {
-            if !args.is_empty() {
-                let current = entry["function"]["arguments"].as_str().unwrap_or("");
-                if current.len() + args.len() <= MAX_TOOL_CALL_ARGS_BYTES {
-                    entry["function"]["arguments"] = json!(format!("{}{}", current, args));
-                }
+        if let Some(args) = fn_part["arguments"].as_str()
+            && !args.is_empty()
+        {
+            let current = entry["function"]["arguments"].as_str().unwrap_or("");
+            if current.len() + args.len() <= MAX_TOOL_CALL_ARGS_BYTES {
+                entry["function"]["arguments"] = json!(format!("{}{}", current, args));
             }
         }
     }

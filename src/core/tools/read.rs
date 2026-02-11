@@ -4,7 +4,7 @@
 //! saving tokens. Omit both for the full file.
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{str_arg, tool_definition};
 
@@ -82,11 +82,9 @@ impl super::Tool for ReadTool {
             return Ok(String::new());
         }
         if start > line_count {
-            return Err(format!(
-                "start_line {} is beyond file ({} lines)",
-                start, line_count
-            )
-            .into());
+            return Err(
+                format!("start_line {} is beyond file ({} lines)", start, line_count).into(),
+            );
         }
         let end = end.min(line_count);
         let selected: Vec<&str> = lines[(start - 1)..end].to_vec();

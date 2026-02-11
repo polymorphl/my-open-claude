@@ -48,14 +48,14 @@ fn sanitize_messages_for_save(messages: &[Value]) -> Vec<Value> {
 /// Generate title from first user message. Truncates to max_len with ellipsis.
 pub fn first_message_preview(messages: &[Value], max_len: usize) -> String {
     for msg in messages {
-        if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
-            if let Some(content) = message::extract_content(msg) {
-                let s = content.trim().replace('\n', " ");
-                if s.len() <= max_len {
-                    return s;
-                }
-                return format!("{}…", &s[..max_len.saturating_sub(1)]);
+        if msg.get("role").and_then(|r| r.as_str()) == Some("user")
+            && let Some(content) = message::extract_content(msg)
+        {
+            let s = content.trim().replace('\n', " ");
+            if s.len() <= max_len {
+                return s;
             }
+            return format!("{}…", &s[..max_len.saturating_sub(1)]);
         }
     }
     "(No title)".to_string()
@@ -277,14 +277,12 @@ mod tests {
 
     #[test]
     fn filter_conversations_match_by_id() {
-        let convs = vec![
-            ConversationMeta {
-                id: "abc-123".to_string(),
-                title: "Chat".to_string(),
-                created_at: 0,
-                updated_at: 0,
-            },
-        ];
+        let convs = vec![ConversationMeta {
+            id: "abc-123".to_string(),
+            title: "Chat".to_string(),
+            created_at: 0,
+            updated_at: 0,
+        }];
         let out = filter_conversations(&convs, "abc");
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "abc-123");

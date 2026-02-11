@@ -51,7 +51,11 @@ pub(crate) fn draw_confirm_popup(f: &mut Frame, area: Rect, command: &str) {
     f.render_widget(paragraph, popup_rect);
 }
 
-pub(crate) fn draw_model_selector_popup(f: &mut Frame, area: Rect, selector: &mut ModelSelectorState) {
+pub(crate) fn draw_model_selector_popup(
+    f: &mut Frame,
+    area: Rect,
+    selector: &mut ModelSelectorState,
+) {
     let popup_rect = popup_area(area, 60, 50);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -146,8 +150,8 @@ pub(crate) fn draw_model_selector_popup(f: &mut Frame, area: Rect, selector: &mu
 
             selector.list_state.select(Some(selector.selected_index));
 
-            let list = List::new(items)
-                .highlight_style(Style::default().fg(Color::Black).bg(ACCENT));
+            let list =
+                List::new(items).highlight_style(Style::default().fg(Color::Black).bg(ACCENT));
             f.render_stateful_widget(list, list_area, &mut selector.list_state);
         }
     }

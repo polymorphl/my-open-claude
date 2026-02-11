@@ -10,8 +10,8 @@ use crate::core::config::Config;
 
 use super::super::app::{App, ScrollPosition};
 use super::super::constants::{self, SUGGESTIONS};
-use super::chat_spawn;
 use super::PendingChat;
+use super::chat_spawn;
 
 /// Handle main input keys (when no popup is open).
 pub(crate) fn handle_main_input(

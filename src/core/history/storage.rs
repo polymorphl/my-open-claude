@@ -87,8 +87,8 @@ pub(super) fn read_conv_messages(id: &str) -> Option<Vec<Value>> {
 }
 
 pub(super) fn write_conv_file(id: &str, messages: &[Value]) -> io::Result<()> {
-    let path = conv_path(id)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No conv path"))?;
+    let path =
+        conv_path(id).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No conv path"))?;
     let file = ConvFile {
         messages: messages.to_vec(),
     };

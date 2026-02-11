@@ -1,10 +1,10 @@
 //! Welcome screen: mascot ASCII art (owl in braille characters).
 
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use ratatui::Frame;
 
 use super::super::constants::ACCENT;
 

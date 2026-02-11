@@ -1,5 +1,7 @@
 # My Open Claude
 
+[![CI](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml/badge.svg)](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml)
+
 ![my-open-claude TUI](screenshot.png)
 
 LLM-powered coding assistant written in Rust. It understands code and performs actions through tool calls, with a CLI and an interactive TUI chat mode.

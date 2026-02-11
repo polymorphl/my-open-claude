@@ -1,20 +1,20 @@
 //! Agent loop: streaming, tool execution, repeat until done.
 
-use async_openai::config::OpenAIConfig;
 use async_openai::Client;
+use async_openai::config::OpenAIConfig;
 use futures::StreamExt;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-use crate::core::confirm::ConfirmDestructive;
 use crate::core::config::Config;
+use crate::core::confirm::ConfirmDestructive;
 use crate::core::tools;
 
 use super::context;
+use super::stream::{MAX_CONTENT_BYTES, TokenUsage, merge_tool_call_delta, parse_usage};
 use super::tool_execution;
-use super::stream::{merge_tool_call_delta, parse_usage, TokenUsage, MAX_CONTENT_BYTES};
-use super::{map_api_error, ChatError, ChatResult};
+use super::{ChatError, ChatResult, map_api_error};
 
 fn make_complete(
     content: &str,
@@ -31,6 +31,7 @@ fn make_complete(
 }
 
 /// Run the agent loop: call API, stream response, execute tools, repeat.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_agent_loop(
     client: &Client<OpenAIConfig>,
     _config: &Config,
@@ -120,7 +121,9 @@ pub(super) async fn run_agent_loop(
 
             let choices = chunk.get("choices").and_then(|c| c.as_array());
             let Some(choices) = choices else { continue };
-            let Some(choice) = choices.first() else { continue };
+            let Some(choice) = choices.first() else {
+                continue;
+            };
             let delta = &choice["delta"];
 
             if let Some(content) = delta["content"].as_str() {
@@ -167,18 +170,28 @@ pub(super) async fn run_agent_loop(
         Arc::make_mut(messages).push(assistant_message.clone());
 
         // Summarize Write/Edit tool arguments to reduce context bloat on subsequent turns.
-        context::summarize_write_args_in_last(Arc::make_mut(messages));
+        context::summarize_write_args_in_last(Arc::make_mut(messages).as_mut_slice());
 
         let tool_calls_opt = assistant_message
             .get("tool_calls")
             .and_then(|v| v.as_array());
 
         let Some(tool_calls) = tool_calls_opt else {
-            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref(), last_usage.clone()));
+            return Ok(make_complete(
+                &full_content,
+                tool_log.as_ref(),
+                messages.as_ref(),
+                last_usage.clone(),
+            ));
         };
 
         if tool_calls.is_empty() {
-            return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref(), last_usage.clone()));
+            return Ok(make_complete(
+                &full_content,
+                tool_log.as_ref(),
+                messages.as_ref(),
+                last_usage.clone(),
+            ));
         }
 
         // Check cancellation before executing tools.

@@ -95,8 +95,7 @@ fn wrap_text(s: &str, width: usize) -> Vec<String> {
         // Last byte index that is a character boundary and <= width.
         let boundary = rest
             .char_indices()
-            .filter(|(i, _)| *i <= width)
-            .last()
+            .rfind(|(i, _)| *i <= width)
             .map(|(i, _)| i);
         let boundary = match boundary {
             Some(b) if b > 0 => b,

@@ -1,6 +1,6 @@
 //! Fetch credit balance from OpenRouter.
 
-use openrouter_rs::api::credits::{get_credits, CreditsData};
+use openrouter_rs::api::credits::{CreditsData, get_credits};
 use std::error::Error;
 
 use crate::core::config::Config;

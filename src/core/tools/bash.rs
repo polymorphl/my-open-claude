@@ -1,17 +1,14 @@
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::process::Command;
 
 use super::{str_arg, tool_definition};
 
 /// Command prefixes (normalized, lowercase) that are considered destructive and require confirmation.
 const DESTRUCTIVE_PREFIXES: &[&str] = &[
-    "rm ",
-    "rm -",
-    "rmdir ",
-    "del ",   // Windows
-    "rd ",    // Windows (remove directory)
-    "mv ",    // can overwrite or remove
+    "rm ", "rm -", "rmdir ", "del ", // Windows
+    "rd ",  // Windows (remove directory)
+    "mv ",  // can overwrite or remove
     "unlink ",
 ];
 
@@ -72,14 +69,9 @@ impl super::Tool for BashTool {
             .map_err(|e| format!("Invalid arguments: {}", e))?;
 
         let output = if cfg!(target_os = "windows") {
-            Command::new("cmd")
-                .args(["/C", &parsed.command])
-                .output()
+            Command::new("cmd").args(["/C", &parsed.command]).output()
         } else {
-            Command::new("sh")
-                .arg("-c")
-                .arg(&parsed.command)
-                .output()
+            Command::new("sh").arg("-c").arg(&parsed.command).output()
         };
 
         match output {

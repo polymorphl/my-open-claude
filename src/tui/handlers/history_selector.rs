@@ -9,9 +9,16 @@ use super::super::app::HistorySelectorState;
 /// Action to apply after handling a history selector key.
 pub(crate) enum HistorySelectorAction {
     Close,
-    Load { id: String },
-    Delete { id: String },
-    Rename { id: String, new_title: String },
+    Load {
+        id: String,
+    },
+    Delete {
+        id: String,
+    },
+    Rename {
+        id: String,
+        new_title: String,
+    },
     /// No action; keep the selector open.
     Keep,
 }
@@ -97,8 +104,8 @@ pub(crate) fn handle_history_selector_key(
         }
         KeyCode::Down => {
             if !filtered.is_empty() {
-                selector.selected_index = (selector.selected_index + 1)
-                    .min(filtered.len().saturating_sub(1));
+                selector.selected_index =
+                    (selector.selected_index + 1).min(filtered.len().saturating_sub(1));
             }
             HistorySelectorAction::Keep
         }

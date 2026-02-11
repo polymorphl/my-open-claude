@@ -56,6 +56,7 @@ pub fn is_ask_mode(mode: &str) -> bool {
 }
 
 /// Execute a single tool call. Returns `Some(ChatResult::NeedsConfirmation)` if destructive and needs confirmation.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn execute_tool_call(
     tool_call: &Value,
     tools_list: &[Box<dyn tools::Tool>],
@@ -87,51 +88,52 @@ pub(super) fn execute_tool_call(
         progress(&log_line);
     }
 
-    let result = if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
-        ASK_MODE_DISABLED.to_string()
-    } else {
-        match tools_list.iter().find(|t| t.name() == name) {
-            Some(tool) => {
-                if name == BASH_NAME {
-                    if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
-                        if tools::is_destructive(command) {
-                            if let Some(cb) = confirm_destructive {
-                                let confirmed = cb(command);
-                                if !confirmed {
-                                    "Command cancelled (destructive command not confirmed)."
-                                        .to_string()
+    let result =
+        if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
+            ASK_MODE_DISABLED.to_string()
+        } else {
+            match tools_list.iter().find(|t| t.name() == name) {
+                Some(tool) => {
+                    if name == BASH_NAME {
+                        if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
+                            if tools::is_destructive(command) {
+                                if let Some(cb) = confirm_destructive {
+                                    let confirmed = cb(command);
+                                    if !confirmed {
+                                        "Command cancelled (destructive command not confirmed)."
+                                            .to_string()
+                                    } else {
+                                        tool.execute(&args)
+                                            .unwrap_or_else(|e| format!("Error: {}", e))
+                                    }
                                 } else {
-                                    tool.execute(&args)
-                                        .unwrap_or_else(|e| format!("Error: {}", e))
+                                    return Ok(Some(ChatResult::NeedsConfirmation {
+                                        command: command.to_string(),
+                                        state: ConfirmState {
+                                            messages: std::sync::Arc::clone(messages),
+                                            tool_log: std::sync::Arc::clone(tool_log),
+                                            tool_call_id: id.clone(),
+                                            mode: mode.to_string(),
+                                            tools: tools_defs.to_vec(),
+                                            command: command.to_string(),
+                                        },
+                                    }));
                                 }
                             } else {
-                                return Ok(Some(ChatResult::NeedsConfirmation {
-                                    command: command.to_string(),
-                                    state: ConfirmState {
-                                        messages: std::sync::Arc::clone(messages),
-                                        tool_log: std::sync::Arc::clone(tool_log),
-                                        tool_call_id: id.clone(),
-                                        mode: mode.to_string(),
-                                        tools: tools_defs.to_vec(),
-                                        command: command.to_string(),
-                                    },
-                                }));
+                                tool.execute(&args)
+                                    .unwrap_or_else(|e| format!("Error: {}", e))
                             }
                         } else {
-                            tool.execute(&args)
-                                .unwrap_or_else(|e| format!("Error: {}", e))
+                            "Error: missing command argument".to_string()
                         }
                     } else {
-                        "Error: missing command argument".to_string()
+                        tool.execute(&args)
+                            .unwrap_or_else(|e| format!("Error: {}", e))
                     }
-                } else {
-                    tool.execute(&args)
-                        .unwrap_or_else(|e| format!("Error: {}", e))
                 }
+                None => format!("Error: unknown tool '{}'", name),
             }
-            None => format!("Error: unknown tool '{}'", name),
-        }
-    };
+        };
 
     // Truncate large tool outputs to stay within context budget.
     let result = match output_limit_for(name) {

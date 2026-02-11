@@ -52,15 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = std::sync::Arc::new(config);
     let config_clone = config.clone();
     let join_result: Result<std::io::Result<()>, tokio::task::JoinError> =
-        tokio::task::spawn_blocking(move || tui::run(config_clone))
-            .await;
-    join_result
-        .map_err(|_| {
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "TUI thread panicked",
-            )) as Box<dyn std::error::Error>
-        })??;
+        tokio::task::spawn_blocking(move || tui::run(config_clone)).await;
+    join_result.map_err(|_| {
+        Box::new(std::io::Error::other("TUI thread panicked")) as Box<dyn std::error::Error>
+    })??;
 
     Ok(())
 }

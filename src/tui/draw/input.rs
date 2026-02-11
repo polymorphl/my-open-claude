@@ -57,8 +57,7 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
     f.render_widget(
-        Paragraph::new(Line::from(suggestion_spans))
-            .alignment(ratatui::layout::Alignment::Center),
+        Paragraph::new(Line::from(suggestion_spans)).alignment(ratatui::layout::Alignment::Center),
         suggestions_area,
     );
 }
@@ -101,8 +100,7 @@ fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
     f.render_widget(
-        Paragraph::new(Line::from(suggestion_spans))
-            .alignment(ratatui::layout::Alignment::Center),
+        Paragraph::new(Line::from(suggestion_spans)).alignment(ratatui::layout::Alignment::Center),
         area,
     );
 }

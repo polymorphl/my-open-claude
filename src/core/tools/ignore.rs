@@ -22,5 +22,5 @@ pub fn is_ignored(entry: &walkdir::DirEntry) -> bool {
         && entry
             .file_name()
             .to_str()
-            .map_or(false, |n| IGNORED_DIRS.contains(&n))
+            .is_some_and(|n| IGNORED_DIRS.contains(&n))
 }

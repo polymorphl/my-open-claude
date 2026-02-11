@@ -8,8 +8,8 @@ use tokio::runtime::Runtime;
 use crate::core::config::Config;
 
 use super::super::app::{App, ConfirmPopup, ScrollPosition};
-use super::chat_spawn;
 use super::PendingChat;
+use super::chat_spawn;
 
 /// Result of handling a key in the confirm popup.
 pub(crate) enum ConfirmPopupResult {
