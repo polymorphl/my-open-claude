@@ -1,3 +1,8 @@
+//! Read tool — read file contents, optionally a specific line range.
+//!
+//! Use `start_line` and `end_line` (1-based) to read only part of a large file,
+//! saving tokens. Omit both for the full file.
+
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -6,6 +11,10 @@ use super::{str_arg, tool_definition};
 #[derive(Debug, Deserialize)]
 pub struct ReadArgs {
     pub file_path: String,
+    #[serde(default)]
+    pub start_line: Option<u64>,
+    #[serde(default)]
+    pub end_line: Option<u64>,
 }
 
 pub struct ReadTool;
@@ -18,13 +27,21 @@ impl super::Tool for ReadTool {
     fn definition(&self) -> Value {
         tool_definition(
             self.name(),
-            "Read and return the contents of a file",
+            "Read file contents. Optionally use start_line and end_line (1-based, inclusive) to read only a range of lines — useful for large files to save tokens.",
             json!({
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
                         "description": "The path to the file to read"
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "First line to include (1-based). Omit for full file or to start from the beginning."
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "Last line to include (1-based, inclusive). Omit to read until end of file."
                     }
                 },
                 "required": ["file_path"]
@@ -33,12 +50,46 @@ impl super::Tool for ReadTool {
     }
 
     fn args_preview(&self, args: &Value) -> String {
-        str_arg(args, "file_path")
+        let path = str_arg(args, "file_path");
+        let start = args.get("start_line").and_then(|v| v.as_u64());
+        let end = args.get("end_line").and_then(|v| v.as_u64());
+        match (start, end) {
+            (Some(s), Some(e)) => format!("{} (lines {}-{})", path, s, e),
+            (Some(s), None) => format!("{} (from line {})", path, s),
+            (None, Some(e)) => format!("{} (up to line {})", path, e),
+            (None, None) => path,
+        }
     }
 
     fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
         let parsed: ReadArgs = serde_json::from_value(args.clone())
             .map_err(|e| format!("Invalid arguments: {}", e))?;
-        std::fs::read_to_string(&parsed.file_path).map_err(Into::into)
+
+        let content = std::fs::read_to_string(&parsed.file_path)?;
+        if parsed.start_line.is_none() && parsed.end_line.is_none() {
+            return Ok(content);
+        }
+
+        let lines: Vec<&str> = content.lines().collect();
+        let line_count = lines.len();
+        let start = parsed.start_line.unwrap_or(1).max(1) as usize;
+        let end = parsed
+            .end_line
+            .unwrap_or(u64::MAX)
+            .min(line_count as u64)
+            .max(start as u64) as usize;
+        if lines.is_empty() {
+            return Ok(String::new());
+        }
+        if start > line_count {
+            return Err(format!(
+                "start_line {} is beyond file ({} lines)",
+                start, line_count
+            )
+            .into());
+        }
+        let end = end.min(line_count);
+        let selected: Vec<&str> = lines[(start - 1)..end].to_vec();
+        Ok(selected.join("\n"))
     }
 }

@@ -24,7 +24,6 @@ use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
 use crate::core::credits;
-use crate::core::llm;
 use crate::core::models::{self};
 
 use handlers::{HandleResult, PendingChat, set_cursor_shape};
