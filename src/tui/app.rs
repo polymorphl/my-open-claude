@@ -2,26 +2,12 @@
 
 use crate::core::history::ConversationMeta;
 use crate::core::llm::{ConfirmState, TokenUsage};
+use crate::core::message;
 use crate::core::models::ModelInfo;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 use serde_json::Value;
 use std::time::Instant;
-
-fn extract_content_value(msg: &Value) -> Option<String> {
-    let content = msg.get("content")?;
-    if let Some(s) = content.as_str() {
-        return Some(s.to_string());
-    }
-    if let Some(arr) = content.as_array() {
-        for block in arr {
-            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                return Some(text.to_string());
-            }
-        }
-    }
-    None
-}
 
 /// Messages displayed in the history (user or assistant).
 #[derive(Clone)]
@@ -177,7 +163,7 @@ impl App {
         self.messages.clear();
         for msg in api_messages {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let content = extract_content_value(msg).unwrap_or_default();
+            let content = message::extract_content(msg).unwrap_or_default();
             match role {
                 "user" => self.messages.push(ChatMessage::User(content)),
                 "assistant" => self.messages.push(ChatMessage::Assistant(content)),

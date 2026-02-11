@@ -5,20 +5,14 @@ use std::error::Error;
 use std::io;
 
 use crate::core::config::Config;
+use crate::core::util;
 
 use super::cache;
 use super::info::ModelInfo;
 
 /// Filter models by query (case-insensitive match on id or name).
 pub fn filter_models<'a>(models: &'a [ModelInfo], query: &str) -> Vec<&'a ModelInfo> {
-    if query.is_empty() {
-        return models.iter().collect();
-    }
-    let q = query.to_lowercase();
-    models
-        .iter()
-        .filter(|m| m.id.to_lowercase().contains(&q) || m.name.to_lowercase().contains(&q))
-        .collect()
+    util::filter_by_query(models, query, |m| (m.id.as_str(), m.name.as_str()))
 }
 
 /// Resolve model ID to display name. Uses cached models if available; otherwise returns the ID (slug).

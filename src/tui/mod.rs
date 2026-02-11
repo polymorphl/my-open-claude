@@ -165,7 +165,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
 
         terminal.draw(|f| draw(f, &mut app, f.area()))?;
 
-        if event::poll(std::time::Duration::from_millis(100))? {
+        if event::poll(std::time::Duration::from_millis(constants::EVENT_POLL_TIMEOUT_MS))? {
             match event::read()? {
                 Event::Mouse(mouse) => {
                     let _ = handlers::handle_mouse(mouse, &mut app);
@@ -206,7 +206,7 @@ fn save_conversation_if_dirty(
     if msgs.is_empty() {
         return;
     }
-    let title = first_message_preview(msgs, 60);
+    let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
     if let Ok(id) = history::save_conversation(
         app.conversation_id(),
         &title,
@@ -221,7 +221,7 @@ fn save_conversation_if_dirty(
 fn handle_chat_result(
     app: &mut App,
     api_messages: &mut Option<Vec<Value>>,
-    result: Result<llm::ChatResult, impl std::fmt::Display>,
+    result: Result<llm::ChatResult, llm::ChatError>,
     tool_log_already_streamed: bool,
     config: &Config,
 ) {
@@ -243,7 +243,7 @@ fn handle_chat_result(
             }
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Bottom;
-            let title = first_message_preview(&messages, 60);
+            let title = first_message_preview(&messages, constants::TITLE_PREVIEW_MAX_LEN);
             if let Ok(id) = history::save_conversation(
                 app.conversation_id(),
                 &title,
@@ -257,12 +257,12 @@ fn handle_chat_result(
         Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
             app.confirm_popup = Some(app::ConfirmPopup { command, state });
         }
-        Err(ref e) if e.to_string() == "Request cancelled" => {
+        Err(llm::ChatError::Cancelled) => {
             // Keep whatever partial content was already streamed to the UI.
             // Append a subtle cancellation notice.
             app.append_cancelled_notice();
         }
-        Err(e) => {
+        Err(ref e) => {
             app.replace_or_push_assistant(format!("Error: {}", e));
             app.scroll = app::ScrollPosition::Bottom;
         }

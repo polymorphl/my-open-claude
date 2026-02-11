@@ -2,25 +2,22 @@
 
 use std::fs;
 use std::io;
-use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::core::config::Config;
+use crate::core::message;
+use crate::core::paths;
+use crate::core::util;
 
-fn data_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io", "polymorphl", "my-open-claude")
-        .map(|d| d.data_dir().join("conversations"))
+fn index_path() -> Option<std::path::PathBuf> {
+    paths::data_dir().map(|d| d.join("index.json"))
 }
 
-fn index_path() -> Option<PathBuf> {
-    data_dir().map(|d| d.join("index.json"))
-}
-
-fn conv_path(id: &str) -> Option<PathBuf> {
-    data_dir().map(|d| d.join(format!("conv_{}.json", id)))
+fn conv_path(id: &str) -> Option<std::path::PathBuf> {
+    paths::data_dir().map(|d| d.join(format!("conv_{}.json", id)))
 }
 
 /// Metadata for a conversation in the index.
@@ -40,22 +37,6 @@ struct IndexFile {
 #[derive(Debug, Serialize, Deserialize)]
 struct ConvFile {
     messages: Vec<Value>,
-}
-
-/// Extract text content from an API message (user or assistant).
-fn extract_content(msg: &Value) -> Option<String> {
-    let content = msg.get("content")?;
-    if let Some(s) = content.as_str() {
-        return Some(s.to_string());
-    }
-    if let Some(arr) = content.as_array() {
-        for block in arr {
-            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                return Some(text.to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Extract messages suitable for persistence: only user and assistant with content.
@@ -86,7 +67,7 @@ fn sanitize_messages_for_save(messages: &[Value]) -> Vec<Value> {
 pub fn first_message_preview(messages: &[Value], max_len: usize) -> String {
     for msg in messages {
         if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
-            if let Some(content) = extract_content(msg) {
+            if let Some(content) = message::extract_content(msg) {
                 let s = content.trim().replace('\n', " ");
                 if s.len() <= max_len {
                     return s;
@@ -98,9 +79,9 @@ pub fn first_message_preview(messages: &[Value], max_len: usize) -> String {
     "(No title)".to_string()
 }
 
-fn ensure_data_dir() -> io::Result<PathBuf> {
-    let dir =
-        data_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No data directory"))?;
+fn ensure_data_dir() -> io::Result<std::path::PathBuf> {
+    let dir = paths::data_dir()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No data directory"))?;
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -116,15 +97,25 @@ fn load_index() -> IndexFile {
     };
     let data = match fs::read_to_string(&path) {
         Ok(d) => d,
-        Err(_) => {
+        Err(e) => {
+            eprintln!("Warning: could not read history index at {:?}: {}", path, e);
             return IndexFile {
                 conversations: vec![],
             };
         }
     };
-    serde_json::from_str(&data).unwrap_or(IndexFile {
-        conversations: vec![],
-    })
+    match serde_json::from_str(&data) {
+        Ok(index) => index,
+        Err(e) => {
+            eprintln!(
+                "Warning: invalid JSON in history index at {:?}: {}",
+                path, e
+            );
+            IndexFile {
+                conversations: vec![],
+            }
+        }
+    }
 }
 
 fn save_index(index: &IndexFile) -> io::Result<()> {
@@ -142,17 +133,9 @@ fn save_index(index: &IndexFile) -> io::Result<()> {
 /// Filter conversations by title or id (case-insensitive).
 pub fn filter_conversations<'a>(
     convs: &'a [ConversationMeta],
-    filter: &str,
+    query: &str,
 ) -> Vec<&'a ConversationMeta> {
-    if filter.is_empty() {
-        return convs.iter().collect();
-    }
-    let f = filter.to_lowercase();
-    convs.iter()
-        .filter(|c| {
-            c.title.to_lowercase().contains(&f) || c.id.to_lowercase().contains(&f)
-        })
-        .collect()
+    util::filter_by_query(convs, query, |c| (c.title.as_str(), c.id.as_str()))
 }
 
 /// List all conversations, sorted by updated_at descending.

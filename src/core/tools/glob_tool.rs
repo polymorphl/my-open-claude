@@ -5,23 +5,19 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use walkdir::WalkDir;
 
-use super::{ignore, str_arg, tool_definition};
+use super::{ignore, str_arg, tool_definition, default_search_path, GLOB_DEFAULT_MAX_RESULTS};
 
 #[derive(Debug, Deserialize)]
 struct GlobArgs {
     pattern: String,
-    #[serde(default = "default_path")]
+    #[serde(default = "default_search_path")]
     path: String,
-    #[serde(default = "default_max_results")]
+    #[serde(default = "default_glob_max_results")]
     max_results: usize,
 }
 
-fn default_path() -> String {
-    ".".to_string()
-}
-
-fn default_max_results() -> usize {
-    100
+fn default_glob_max_results() -> usize {
+    GLOB_DEFAULT_MAX_RESULTS
 }
 
 pub struct GlobTool;

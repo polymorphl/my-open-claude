@@ -17,6 +17,17 @@ pub use list_dir::ListDirTool;
 pub use read::ReadTool;
 pub use write::WriteTool;
 
+/// Default path for search tools (current directory).
+pub fn default_search_path() -> String {
+    ".".to_string()
+}
+
+/// Default max results for Grep (matches).
+pub const GREP_DEFAULT_MAX_RESULTS: usize = 50;
+
+/// Default max results for Glob (files).
+pub const GLOB_DEFAULT_MAX_RESULTS: usize = 100;
+
 /// Helper to extract a string argument from tool args JSON.
 pub fn str_arg(args: &Value, key: &str) -> String {
     args.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
