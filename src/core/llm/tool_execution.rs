@@ -10,8 +10,9 @@ use super::ChatResult;
 use super::ConfirmState;
 
 const WRITE_NAME: &str = "Write";
+const EDIT_NAME: &str = "Edit";
 const BASH_NAME: &str = "Bash";
-const ASK_MODE_DISABLED: &str = "Ask mode: file creation/modification and command execution are disabled. Use only the Read tool to read files, then respond with an explanation.";
+const ASK_MODE_DISABLED: &str = "Ask mode: file modification and command execution are disabled. Use Read, Grep, ListDir, and Glob tools to explore, then respond with an explanation.";
 
 /// Interaction mode: "Ask" = explanations only (no write/bash), "Build" = all tools.
 pub fn is_ask_mode(mode: &str) -> bool {
@@ -50,7 +51,7 @@ pub(super) fn execute_tool_call(
         progress(&log_line);
     }
 
-    let result = if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME) {
+    let result = if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
         ASK_MODE_DISABLED.to_string()
     } else {
         match tools_list.iter().find(|t| t.name() == name) {

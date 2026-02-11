@@ -1,10 +1,19 @@
 mod bash;
+mod edit;
+mod glob_tool;
+mod grep;
+mod ignore;
+mod list_dir;
 mod read;
 mod write;
 
 use serde_json::{Value, json};
 
 pub use bash::{is_destructive, BashTool};
+pub use edit::EditTool;
+pub use glob_tool::GlobTool;
+pub use grep::GrepTool;
+pub use list_dir::ListDirTool;
 pub use read::ReadTool;
 pub use write::WriteTool;
 
@@ -39,6 +48,10 @@ pub fn all() -> Vec<Box<dyn Tool>> {
         Box::new(BashTool),
         Box::new(ReadTool),
         Box::new(WriteTool),
+        Box::new(EditTool),
+        Box::new(GrepTool),
+        Box::new(ListDirTool),
+        Box::new(GlobTool),
     ]
 }
 
