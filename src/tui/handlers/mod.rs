@@ -223,6 +223,8 @@ pub fn handle_key(
                     app.set_messages_from_api(&messages);
                     app.set_conversation_id(Some(id.clone()));
                     app.scroll = super::app::ScrollPosition::Bottom;
+                    // Estimate token usage from loaded messages so the header shows it immediately.
+                    app.token_usage = Some(llm::TokenUsage::estimated_from_messages(&messages));
                     *api_messages = Some(messages);
                 }
                 app.history_selector = None;
@@ -263,6 +265,8 @@ pub fn handle_key(
             model_selector::ModelSelectorAction::Select(model) => {
                 app.current_model_id = model.id.clone();
                 app.model_name = model.name.clone();
+                app.context_length = model.context_length;
+                app.token_usage = None;
                 let _ = crate::core::persistence::save_last_model(&model.id);
                 app.model_selector = None;
                 *pending_model_fetch = None;

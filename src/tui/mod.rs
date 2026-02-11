@@ -230,8 +230,10 @@ fn handle_chat_result(
             content,
             tool_log,
             messages,
+            usage,
         }) => {
             *api_messages = Some(messages.clone());
+            app.token_usage = Some(usage);
             if tool_log_already_streamed {
                 app.clear_progress_after_last_user();
             } else {

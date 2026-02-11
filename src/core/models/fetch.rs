@@ -33,6 +33,18 @@ pub fn resolve_model_display_name(model_id: &str) -> String {
         .unwrap_or_else(|| model_id.to_string())
 }
 
+/// Resolve model ID to its context length. Falls back to default if not found.
+pub fn resolve_context_length(model_id: &str) -> u64 {
+    cache::load_cached_models()
+        .and_then(|models| {
+            models
+                .into_iter()
+                .find(|m| m.id == model_id)
+                .map(|m| m.context_length)
+        })
+        .unwrap_or(super::info::DEFAULT_CONTEXT_LENGTH)
+}
+
 /// Fetch models that support tool calling, suitable for the agent.
 /// Uses 24h cache; sorts alphabetically by name.
 pub async fn fetch_models_with_tools(
@@ -57,9 +69,17 @@ pub async fn fetch_models_with_tools(
 
     let mut model_infos: Vec<ModelInfo> = models
         .into_iter()
-        .map(|m| ModelInfo {
-            id: m.id,
-            name: m.name,
+        .map(|m| {
+            let context_length = if m.context_length > 0.0 {
+                m.context_length as u64
+            } else {
+                super::info::DEFAULT_CONTEXT_LENGTH
+            };
+            ModelInfo {
+                id: m.id,
+                name: m.name,
+                context_length,
+            }
         })
         .collect();
 

@@ -12,7 +12,43 @@ use super::ConfirmState;
 const WRITE_NAME: &str = "Write";
 const EDIT_NAME: &str = "Edit";
 const BASH_NAME: &str = "Bash";
+const READ_NAME: &str = "Read";
+const GREP_NAME: &str = "Grep";
+const LIST_DIR_NAME: &str = "ListDir";
+const GLOB_NAME: &str = "Glob";
 const ASK_MODE_DISABLED: &str = "Ask mode: file modification and command execution are disabled. Use Read, Grep, ListDir, and Glob tools to explore, then respond with an explanation.";
+
+/// Max output size for Read and Bash tool results (32 KB).
+const MAX_OUTPUT_LARGE: usize = 32 * 1024;
+/// Max output size for Grep, ListDir, Glob tool results (16 KB).
+const MAX_OUTPUT_SMALL: usize = 16 * 1024;
+
+/// Truncate a tool result string to the given max bytes, appending a notice.
+fn truncate_tool_output(output: String, max_bytes: usize) -> String {
+    if output.len() <= max_bytes {
+        return output;
+    }
+    let total = output.len();
+    // Find a safe UTF-8 boundary near max_bytes.
+    let mut end = max_bytes;
+    while end > 0 && !output.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}\n\n[... truncated, {} bytes total]",
+        &output[..end],
+        total
+    )
+}
+
+/// Return the max output size for a given tool name, or None for unlimited.
+fn output_limit_for(tool_name: &str) -> Option<usize> {
+    match tool_name {
+        READ_NAME | BASH_NAME => Some(MAX_OUTPUT_LARGE),
+        GREP_NAME | LIST_DIR_NAME | GLOB_NAME => Some(MAX_OUTPUT_SMALL),
+        _ => None,
+    }
+}
 
 /// Interaction mode: "Ask" = explanations only (no write/bash), "Build" = all tools.
 pub fn is_ask_mode(mode: &str) -> bool {
@@ -95,6 +131,12 @@ pub(super) fn execute_tool_call(
             }
             None => format!("Error: unknown tool '{}'", name),
         }
+    };
+
+    // Truncate large tool outputs to stay within context budget.
+    let result = match output_limit_for(name) {
+        Some(limit) => truncate_tool_output(result, limit),
+        None => result,
     };
 
     std::sync::Arc::make_mut(messages).push(json!({

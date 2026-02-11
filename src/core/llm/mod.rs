@@ -1,6 +1,7 @@
 //! Agent loop: chat with tool calling, streaming, and destructive command confirmation.
 
 mod agent_loop;
+pub(crate) mod context;
 mod error;
 mod stream;
 mod tool_execution;
@@ -15,6 +16,7 @@ use crate::core::tools;
 use crate::core::tools::Tool;
 
 pub use error::{map_api_error, ChatError};
+pub use stream::TokenUsage;
 #[allow(unused_imports)]
 pub use tool_execution::is_ask_mode;
 
@@ -25,6 +27,7 @@ pub enum ChatResult {
         content: String,
         tool_log: Vec<String>,
         messages: Vec<Value>,
+        usage: TokenUsage,
     },
     /// Destructive command pending; caller must show confirmation UI then call `chat_resume`.
     NeedsConfirmation {
@@ -61,6 +64,7 @@ pub async fn chat(
     model: &str,
     prompt: &str,
     mode: &str,
+    context_length: u64,
     confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
     previous_messages: Option<Vec<Value>>,
     on_progress: Option<OnProgress>,
@@ -81,6 +85,7 @@ pub async fn chat(
         &client,
         config,
         model,
+        context_length,
         &tools::definitions(),
         &tools::all(),
         &mut messages,
@@ -98,6 +103,7 @@ pub async fn chat(
 pub async fn chat_resume(
     config: &Config,
     model: &str,
+    context_length: u64,
     state: ConfirmState,
     confirmed: bool,
     on_progress: Option<OnProgress>,
@@ -130,6 +136,7 @@ pub async fn chat_resume(
         &client,
         config,
         model,
+        context_length,
         &tools_defs,
         &tools_list,
         &mut messages,
