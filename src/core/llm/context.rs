@@ -48,10 +48,23 @@ pub fn truncate_if_needed(messages: &mut Vec<Value>, context_length: u64) {
     }
 
     // Remove from front, subtracting from total (O(1) per removal).
+    // Preserve the system message (index 0) so the model always knows the CWD.
+    let remove_from = if messages
+        .first()
+        .and_then(|m| m.get("role").and_then(|r| r.as_str()))
+        == Some("system")
+    {
+        1
+    } else {
+        0
+    };
     while messages.len() > 1 && total > budget {
-        let removed = sizes.remove(0);
+        if remove_from >= messages.len() {
+            break;
+        }
+        let removed = sizes.remove(remove_from);
         total = total.saturating_sub(removed);
-        messages.remove(0);
+        messages.remove(remove_from);
     }
 }
 

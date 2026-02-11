@@ -73,7 +73,23 @@ pub async fn chat(
 ) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let system_msg = json!({
+        "role": "system",
+        "content": format!("Current working directory: {}", cwd)
+    });
+
     let mut messages: Vec<Value> = previous_messages.unwrap_or_default();
+    if messages.is_empty()
+        || messages
+            .first()
+            .and_then(|m| m.get("role").and_then(|r| r.as_str()))
+            != Some("system")
+    {
+        messages.insert(0, system_msg);
+    }
     messages.push(json!({
         "role": "user",
         "content": prompt,
