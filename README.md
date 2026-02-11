@@ -89,11 +89,17 @@ The header shows your OpenRouter credit balance (total minus usage). Click it to
 - Type to filter by model name or ID.
 - The last selected model is saved and reused on next launch.
 
+## Development
+
+- Run tests: `cargo test`
+- Check formatting: `cargo fmt --check` (or `cargo fmt` to format)
+- Lint: `cargo clippy --all-targets -- -D warnings`
+
 ## Project structure
 
 - `src/main.rs` — entry point, CLI parsing, TUI or prompt mode launch
 - `src/core/` — business logic: config, credits, confirm, persistence, history (conversations), LLM (agent loop, tools), models (fetch, cache)
 - `src/core/llm/` — chat, agent loop, tool execution, streaming
 - `src/core/models/` — model discovery, 24h cache, filtering
-- `src/core/tools/` — read, write, bash
+- `src/core/tools/` — read, write, edit, bash, grep, list_dir, glob
 - `src/tui/` — terminal UI: app state, handlers (key/mouse), draw (header, history, input, popups)
