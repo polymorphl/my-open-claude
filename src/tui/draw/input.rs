@@ -108,7 +108,7 @@ fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 /// Bottom bar: path on left, shortcuts on right.
-pub(crate) fn draw_bottom_bar(f: &mut Frame, _app: &mut App, area: Rect) {
+pub(crate) fn draw_bottom_bar(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(1), Constraint::Length(100)])
@@ -136,7 +136,7 @@ pub(crate) fn draw_bottom_bar(f: &mut Frame, _app: &mut App, area: Rect) {
         path_area,
     );
 
-    let shortcuts = super::super::shortcuts::labels::bottom_bar();
+    let shortcuts = super::super::shortcuts::labels::bottom_bar(app.is_streaming);
     f.render_widget(
         Paragraph::new(shortcuts).alignment(ratatui::layout::Alignment::Right),
         shortcuts_area,

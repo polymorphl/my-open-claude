@@ -1,27 +1,16 @@
 //! Persistence of conversation history in ~/.local/share/my-open-claude/conversations/.
 
-use std::fs;
+mod storage;
+
 use std::io;
-use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::core::config::Config;
-
-fn data_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io", "polymorphl", "my-open-claude")
-        .map(|d| d.data_dir().join("conversations"))
-}
-
-fn index_path() -> Option<PathBuf> {
-    data_dir().map(|d| d.join("index.json"))
-}
-
-fn conv_path(id: &str) -> Option<PathBuf> {
-    data_dir().map(|d| d.join(format!("conv_{}.json", id)))
-}
+use crate::core::message;
+use crate::core::util;
 
 /// Metadata for a conversation in the index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,32 +19,6 @@ pub struct ConversationMeta {
     pub title: String,
     pub created_at: u64,
     pub updated_at: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct IndexFile {
-    conversations: Vec<ConversationMeta>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ConvFile {
-    messages: Vec<Value>,
-}
-
-/// Extract text content from an API message (user or assistant).
-fn extract_content(msg: &Value) -> Option<String> {
-    let content = msg.get("content")?;
-    if let Some(s) = content.as_str() {
-        return Some(s.to_string());
-    }
-    if let Some(arr) = content.as_array() {
-        for block in arr {
-            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                return Some(text.to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Extract messages suitable for persistence: only user and assistant with content.
@@ -86,7 +49,7 @@ fn sanitize_messages_for_save(messages: &[Value]) -> Vec<Value> {
 pub fn first_message_preview(messages: &[Value], max_len: usize) -> String {
     for msg in messages {
         if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
-            if let Some(content) = extract_content(msg) {
+            if let Some(content) = message::extract_content(msg) {
                 let s = content.trim().replace('\n', " ");
                 if s.len() <= max_len {
                     return s;
@@ -98,66 +61,17 @@ pub fn first_message_preview(messages: &[Value], max_len: usize) -> String {
     "(No title)".to_string()
 }
 
-fn ensure_data_dir() -> io::Result<PathBuf> {
-    let dir =
-        data_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No data directory"))?;
-    fs::create_dir_all(&dir)?;
-    Ok(dir)
-}
-
-fn load_index() -> IndexFile {
-    let path = match index_path() {
-        Some(p) => p,
-        None => {
-            return IndexFile {
-                conversations: vec![],
-            };
-        }
-    };
-    let data = match fs::read_to_string(&path) {
-        Ok(d) => d,
-        Err(_) => {
-            return IndexFile {
-                conversations: vec![],
-            };
-        }
-    };
-    serde_json::from_str(&data).unwrap_or(IndexFile {
-        conversations: vec![],
-    })
-}
-
-fn save_index(index: &IndexFile) -> io::Result<()> {
-    ensure_data_dir()?;
-    let path =
-        index_path().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No index path"))?;
-    let json = serde_json::to_string_pretty(index)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, json)?;
-    fs::rename(tmp, path)?;
-    Ok(())
-}
-
 /// Filter conversations by title or id (case-insensitive).
 pub fn filter_conversations<'a>(
     convs: &'a [ConversationMeta],
-    filter: &str,
+    query: &str,
 ) -> Vec<&'a ConversationMeta> {
-    if filter.is_empty() {
-        return convs.iter().collect();
-    }
-    let f = filter.to_lowercase();
-    convs.iter()
-        .filter(|c| {
-            c.title.to_lowercase().contains(&f) || c.id.to_lowercase().contains(&f)
-        })
-        .collect()
+    util::filter_by_query(convs, query, |c| (c.title.as_str(), c.id.as_str()))
 }
 
 /// List all conversations, sorted by updated_at descending.
 pub fn list_conversations() -> Vec<ConversationMeta> {
-    let mut index = load_index();
+    let mut index = storage::load_index();
     index
         .conversations
         .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -166,10 +80,7 @@ pub fn list_conversations() -> Vec<ConversationMeta> {
 
 /// Load a conversation by ID. Returns the messages in API format.
 pub fn load_conversation(id: &str) -> Option<Vec<Value>> {
-    let path = conv_path(id)?;
-    let data = fs::read_to_string(path).ok()?;
-    let file: ConvFile = serde_json::from_str(&data).ok()?;
-    Some(file.messages)
+    storage::read_conv_messages(id)
 }
 
 /// Save a conversation. Creates or updates. Returns the conversation ID.
@@ -179,7 +90,7 @@ pub fn save_conversation(
     messages: &[Value],
     config: &Config,
 ) -> io::Result<String> {
-    ensure_data_dir()?;
+    storage::ensure_data_dir()?;
     let sanitized = sanitize_messages_for_save(messages);
     if sanitized.is_empty() {
         if let Some(existing_id) = id {
@@ -199,19 +110,10 @@ pub fn save_conversation(
     let conv_id = id
         .map(String::from)
         .unwrap_or_else(|| Uuid::new_v4().to_string());
-    let path = conv_path(&conv_id)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No conv path"))?;
 
-    let file = ConvFile {
-        messages: sanitized.clone(),
-    };
-    let json = serde_json::to_string_pretty(&file)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, json)?;
-    fs::rename(tmp, &path)?;
+    storage::write_conv_file(&conv_id, &sanitized)?;
 
-    let mut index = load_index();
+    let mut index = storage::load_index();
     let created_at = id
         .and_then(|existing_id| {
             index
@@ -231,7 +133,7 @@ pub fn save_conversation(
 
     index.conversations.retain(|c| c.id != conv_id);
     index.conversations.push(meta);
-    save_index(&index)?;
+    storage::save_index(&index)?;
 
     prune_if_needed(config)?;
     Ok(conv_id)
@@ -246,22 +148,20 @@ pub fn rename_conversation(id: &str, new_title: &str) -> io::Result<()> {
             "Title cannot be empty",
         ));
     }
-    let mut index = load_index();
+    let mut index = storage::load_index();
     if let Some(meta) = index.conversations.iter_mut().find(|c| c.id == id) {
         meta.title = new_title.to_string();
-        save_index(&index)?;
+        storage::save_index(&index)?;
     }
     Ok(())
 }
 
 /// Delete a conversation by ID. Removes the file and index entry.
 pub fn delete_conversation(id: &str) -> io::Result<()> {
-    if let Some(p) = conv_path(id) {
-        let _ = fs::remove_file(p);
-    }
-    let mut index = load_index();
+    storage::remove_conv_file(id);
+    let mut index = storage::load_index();
     index.conversations.retain(|c| c.id != id);
-    save_index(&index)?;
+    storage::save_index(&index)?;
     Ok(())
 }
 
@@ -272,7 +172,7 @@ pub fn prune_if_needed(config: &Config) -> io::Result<()> {
         return Ok(());
     }
 
-    let mut index = load_index();
+    let mut index = storage::load_index();
     index
         .conversations
         .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -283,10 +183,110 @@ pub fn prune_if_needed(config: &Config) -> io::Result<()> {
 
     let to_remove: Vec<_> = index.conversations.drain(max..).collect();
     for meta in &to_remove {
-        if let Some(p) = conv_path(&meta.id) {
-            let _ = fs::remove_file(p);
-        }
+        storage::remove_conv_file(&meta.id);
     }
-    save_index(&index)?;
+    storage::save_index(&index)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_message_preview_empty_messages() {
+        let messages: Vec<Value> = vec![];
+        assert_eq!(first_message_preview(&messages, 50), "(No title)");
+    }
+
+    #[test]
+    fn first_message_preview_no_user_message() {
+        let messages = vec![serde_json::json!({"role": "assistant", "content": "Hi"})];
+        assert_eq!(first_message_preview(&messages, 50), "(No title)");
+    }
+
+    #[test]
+    fn first_message_preview_with_user_message() {
+        let messages = vec![
+            serde_json::json!({"role": "system", "content": "You are helpful"}),
+            serde_json::json!({"role": "user", "content": "Hello world"}),
+        ];
+        assert_eq!(first_message_preview(&messages, 50), "Hello world");
+    }
+
+    #[test]
+    fn first_message_preview_truncates_long_message() {
+        let messages = vec![serde_json::json!({
+            "role": "user",
+            "content": "This is a very long message that exceeds the max length"
+        })];
+        let result = first_message_preview(&messages, 20);
+        assert!(result.ends_with('…'));
+        assert!(result.starts_with("This is a very long"));
+    }
+
+    #[test]
+    fn first_message_preview_trims_and_replaces_newlines() {
+        let messages = vec![serde_json::json!({
+            "role": "user",
+            "content": "  Hello\nworld  "
+        })];
+        assert_eq!(first_message_preview(&messages, 50), "Hello world");
+    }
+
+    #[test]
+    fn filter_conversations_empty_query_returns_all() {
+        let convs = vec![
+            ConversationMeta {
+                id: "1".to_string(),
+                title: "Chat 1".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+            ConversationMeta {
+                id: "2".to_string(),
+                title: "Chat 2".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+        let out = filter_conversations(&convs, "");
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn filter_conversations_match_by_title() {
+        let convs = vec![
+            ConversationMeta {
+                id: "1".to_string(),
+                title: "Hello world".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+            ConversationMeta {
+                id: "2".to_string(),
+                title: "Other chat".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+        let out = filter_conversations(&convs, "hello");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].title, "Hello world");
+    }
+
+    #[test]
+    fn filter_conversations_match_by_id() {
+        let convs = vec![
+            ConversationMeta {
+                id: "abc-123".to_string(),
+                title: "Chat".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+        let out = filter_conversations(&convs, "abc");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "abc-123");
+    }
 }

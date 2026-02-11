@@ -1,10 +1,10 @@
 //! 24h cache for OpenRouter models list.
 
 use super::info::ModelInfo;
+use crate::core::paths;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
-use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
@@ -15,9 +15,8 @@ struct CachedModels {
     models: Vec<ModelInfo>,
 }
 
-fn cache_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("io", "polymorphl", "my-open-claude")
-        .map(|d| d.cache_dir().join("models.json"))
+fn cache_path() -> Option<std::path::PathBuf> {
+    paths::cache_dir().map(|d| d.join("models.json"))
 }
 
 /// Load cached models if fresh (< 24h). Returns None if cache miss or expired.

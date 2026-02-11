@@ -1,27 +1,13 @@
 //! TUI application state: messages, input, scroll, suggestions.
 
 use crate::core::history::ConversationMeta;
-use crate::core::llm::ConfirmState;
+use crate::core::llm::{ConfirmState, TokenUsage};
+use crate::core::message;
 use crate::core::models::ModelInfo;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 use serde_json::Value;
 use std::time::Instant;
-
-fn extract_content_value(msg: &Value) -> Option<String> {
-    let content = msg.get("content")?;
-    if let Some(s) = content.as_str() {
-        return Some(s.to_string());
-    }
-    if let Some(arr) = content.as_array() {
-        for block in arr {
-            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                return Some(text.to_string());
-            }
-        }
-    }
-    None
-}
 
 /// Messages displayed in the history (user or assistant).
 #[derive(Clone)]
@@ -106,10 +92,17 @@ pub struct App {
     pub(crate) dirty: bool,
     /// Esc was pressed; next key = Option+key (Mac terminals with "Use option as meta").
     pub(crate) escape_pending: bool,
+    /// True while a chat request is in flight (used by bottom bar to show cancel hint).
+    pub(crate) is_streaming: bool,
+    /// Last known token usage from the API (updated after each chat completion).
+    pub(crate) token_usage: Option<TokenUsage>,
+    /// Context window size (in tokens) for the current model.
+    pub(crate) context_length: u64,
 }
 
 impl App {
     pub fn new(model_id: String, model_name: String) -> Self {
+        let context_length = crate::core::models::resolve_context_length(&model_id);
         Self {
             messages: vec![],
             input: String::new(),
@@ -129,6 +122,9 @@ impl App {
             current_conversation_id: None,
             dirty: false,
             escape_pending: false,
+            is_streaming: false,
+            token_usage: None,
+            context_length,
         }
     }
 
@@ -159,6 +155,7 @@ impl App {
         self.dirty = false;
         self.scroll = ScrollPosition::default();
         self.last_max_scroll = 0;
+        self.token_usage = None;
     }
 
     /// Populate messages from API format (user/assistant only).
@@ -166,7 +163,7 @@ impl App {
         self.messages.clear();
         for msg in api_messages {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let content = extract_content_value(msg).unwrap_or_default();
+            let content = message::extract_content(msg).unwrap_or_default();
             match role {
                 "user" => self.messages.push(ChatMessage::User(content)),
                 "assistant" => self.messages.push(ChatMessage::Assistant(content)),
@@ -224,6 +221,22 @@ impl App {
     pub(super) fn clear_progress_after_last_user(&mut self) {
         if let Some(last_user_idx) = self.messages.iter().rposition(|m| matches!(m, ChatMessage::User(_))) {
             self.messages.truncate(last_user_idx + 1);
+        }
+    }
+
+    /// Append "[cancelled]" to the last assistant message (or create one).
+    /// Keeps whatever partial content was already streamed.
+    pub(super) fn append_cancelled_notice(&mut self) {
+        // Remove trailing empty assistant and tool-log lines from streaming.
+        self.remove_last_if_empty_assistant();
+        match self.messages.last_mut() {
+            Some(ChatMessage::Assistant(s)) if !s.is_empty() => {
+                s.push_str("\n\n*[Request cancelled]*");
+            }
+            _ => {
+                self.messages
+                    .push(ChatMessage::Assistant("*[Request cancelled]*".to_string()));
+            }
         }
     }
 

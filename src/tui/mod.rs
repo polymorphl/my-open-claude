@@ -1,6 +1,7 @@
 //! TUI (Text User Interface) to interact with the Claude assistant in chat mode.
 
 mod app;
+mod chat_result;
 mod constants;
 mod draw;
 mod handlers;
@@ -23,8 +24,6 @@ use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
 use crate::core::credits;
-use crate::core::history::{self, first_message_preview};
-use crate::core::llm;
 use crate::core::models::{self};
 
 use handlers::{HandleResult, PendingChat, set_cursor_shape};
@@ -157,14 +156,15 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
             }
             if let Ok(result) = chat.result_rx.try_recv() {
                 app.set_thinking(false);
-                handle_chat_result(&mut app, &mut api_messages, result, true, config.as_ref());
+                app.is_streaming = false;
+                chat_result::handle_chat_result(&mut app, &mut api_messages, result, true, config.as_ref());
                 pending_chat = None;
             }
         }
 
         terminal.draw(|f| draw(f, &mut app, f.area()))?;
 
-        if event::poll(std::time::Duration::from_millis(100))? {
+        if event::poll(std::time::Duration::from_millis(constants::EVENT_POLL_TIMEOUT_MS))? {
             match event::read()? {
                 Event::Mouse(mouse) => {
                     let _ = handlers::handle_mouse(mouse, &mut app);
@@ -180,7 +180,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                         &rt,
                     );
                     if result == HandleResult::Break {
-                        save_conversation_if_dirty(&mut app, &api_messages, config.as_ref());
+                        chat_result::save_conversation_if_dirty(&mut app, &api_messages, config.as_ref());
                         break;
                     }
                 }
@@ -193,70 +193,3 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     Ok(())
 }
 
-fn save_conversation_if_dirty(
-    app: &mut App,
-    api_messages: &Option<Vec<Value>>,
-    config: &Config,
-) {
-    if !app.is_dirty() {
-        return;
-    }
-    let Some(msgs) = api_messages else { return };
-    if msgs.is_empty() {
-        return;
-    }
-    let title = first_message_preview(msgs, 60);
-    if let Ok(id) = history::save_conversation(
-        app.conversation_id(),
-        &title,
-        msgs,
-        config,
-    ) {
-        app.set_conversation_id(Some(id));
-        app.clear_dirty();
-    }
-}
-
-fn handle_chat_result(
-    app: &mut App,
-    api_messages: &mut Option<Vec<Value>>,
-    result: Result<llm::ChatResult, impl std::fmt::Display>,
-    tool_log_already_streamed: bool,
-    config: &Config,
-) {
-    match result {
-        Ok(llm::ChatResult::Complete {
-            content,
-            tool_log,
-            messages,
-        }) => {
-            *api_messages = Some(messages.clone());
-            if tool_log_already_streamed {
-                app.clear_progress_after_last_user();
-            } else {
-                for line in tool_log {
-                    app.push_tool_log(line);
-                }
-            }
-            app.replace_or_push_assistant(content);
-            app.scroll = app::ScrollPosition::Line(0);
-            let title = first_message_preview(&messages, 60);
-            if let Ok(id) = history::save_conversation(
-                app.conversation_id(),
-                &title,
-                &messages,
-                config,
-            ) {
-                app.set_conversation_id(Some(id));
-                app.clear_dirty();
-            }
-        }
-        Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
-            app.confirm_popup = Some(app::ConfirmPopup { command, state });
-        }
-        Err(e) => {
-            app.replace_or_push_assistant(format!("Error: {}", e));
-            app.scroll = app::ScrollPosition::Line(0);
-        }
-    }
-}

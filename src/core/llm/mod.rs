@@ -1,6 +1,7 @@
 //! Agent loop: chat with tool calling, streaming, and destructive command confirmation.
 
 mod agent_loop;
+pub(crate) mod context;
 mod error;
 mod stream;
 mod tool_execution;
@@ -8,12 +9,14 @@ mod tool_execution;
 use async_openai::Client;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::core::config::Config;
 use crate::core::tools;
 use crate::core::tools::Tool;
 
 pub use error::{map_api_error, ChatError};
+pub use stream::TokenUsage;
 #[allow(unused_imports)]
 pub use tool_execution::is_ask_mode;
 
@@ -24,6 +27,7 @@ pub enum ChatResult {
         content: String,
         tool_log: Vec<String>,
         messages: Vec<Value>,
+        usage: TokenUsage,
     },
     /// Destructive command pending; caller must show confirmation UI then call `chat_resume`.
     NeedsConfirmation {
@@ -60,14 +64,32 @@ pub async fn chat(
     model: &str,
     prompt: &str,
     mode: &str,
+    context_length: u64,
     confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
     previous_messages: Option<Vec<Value>>,
     on_progress: Option<OnProgress>,
     on_content_chunk: Option<OnContentChunk>,
+    cancel_token: Option<CancellationToken>,
 ) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+    let system_msg = json!({
+        "role": "system",
+        "content": format!("Current working directory: {}", cwd)
+    });
+
     let mut messages: Vec<Value> = previous_messages.unwrap_or_default();
+    if messages.is_empty()
+        || messages
+            .first()
+            .and_then(|m| m.get("role").and_then(|r| r.as_str()))
+            != Some("system")
+    {
+        messages.insert(0, system_msg);
+    }
     messages.push(json!({
         "role": "user",
         "content": prompt,
@@ -79,6 +101,7 @@ pub async fn chat(
         &client,
         config,
         model,
+        context_length,
         &tools::definitions(),
         &tools::all(),
         &mut messages,
@@ -87,6 +110,7 @@ pub async fn chat(
         &confirm_destructive,
         on_progress.as_deref(),
         on_content_chunk.as_deref(),
+        cancel_token.as_ref(),
     )
     .await
 }
@@ -95,10 +119,12 @@ pub async fn chat(
 pub async fn chat_resume(
     config: &Config,
     model: &str,
+    context_length: u64,
     state: ConfirmState,
     confirmed: bool,
     on_progress: Option<OnProgress>,
     on_content_chunk: Option<OnContentChunk>,
+    cancel_token: Option<CancellationToken>,
 ) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
@@ -126,6 +152,7 @@ pub async fn chat_resume(
         &client,
         config,
         model,
+        context_length,
         &tools_defs,
         &tools_list,
         &mut messages,
@@ -134,6 +161,7 @@ pub async fn chat_resume(
         &None,
         on_progress.as_deref(),
         on_content_chunk.as_deref(),
+        cancel_token.as_ref(),
     )
     .await
 }

@@ -9,6 +9,8 @@ pub enum ChatError {
         tool: String,
         source: serde_json::Error,
     },
+    /// The request was cancelled by the user.
+    Cancelled,
     Other(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
@@ -20,6 +22,7 @@ impl std::fmt::Display for ChatError {
             ChatError::ToolArgs { tool, source } => {
                 write!(f, "Invalid tool arguments for {}: {}", tool, source)
             }
+            ChatError::Cancelled => write!(f, "Request cancelled"),
             ChatError::Other(e) => write!(f, "{}", e),
         }
     }
@@ -30,7 +33,7 @@ impl std::error::Error for ChatError {
         match self {
             ChatError::ToolArgs { source, .. } => Some(source),
             ChatError::Other(e) => e.source(),
-            _ => None,
+            ChatError::Cancelled | ChatError::ApiAuth(_) | ChatError::ApiMessage(_) => None,
         }
     }
 }
@@ -54,4 +57,44 @@ where
         }
     }
     ChatError::Other(e.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_api_error_401_cookie_auth() {
+        let e = std::io::Error::new(std::io::ErrorKind::Other, "401 and cookie auth");
+        let err = map_api_error(e);
+        match &err {
+            ChatError::ApiAuth(msg) => {
+                assert!(msg.contains("OPENROUTER_API_KEY"));
+            }
+            _ => panic!("expected ApiAuth, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn map_api_error_json_message() {
+        let e = std::io::Error::new(
+            std::io::ErrorKind::Other,
+            r#"{"error":{"message":"Rate limit exceeded"}}"#,
+        );
+        let err = map_api_error(e);
+        match &err {
+            ChatError::ApiMessage(msg) => assert_eq!(msg, "Rate limit exceeded"),
+            _ => panic!("expected ApiMessage, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn map_api_error_generic() {
+        let e = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let err = map_api_error(e);
+        match &err {
+            ChatError::Other(_) => {}
+            _ => panic!("expected Other, got {:?}", err),
+        }
+    }
 }

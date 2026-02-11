@@ -80,7 +80,7 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
 
     let total_lines = lines.len();
     let visible = text_area.height as usize;
-    let max_scroll = total_lines.saturating_sub(visible.min(1));
+    let max_scroll = total_lines.saturating_sub(visible.max(1));
     app.last_max_scroll = max_scroll;
     let scroll_pos = app.scroll_line().min(max_scroll);
     let start = scroll_pos;

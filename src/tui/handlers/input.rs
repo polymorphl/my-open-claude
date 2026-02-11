@@ -1,17 +1,16 @@
 //! Handler for main input (chat input, suggestions, scroll).
 
 use crossterm::event::{KeyCode, KeyModifiers};
-use std::sync::mpsc;
 use std::sync::Arc;
 
 use serde_json::Value;
 use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
-use crate::core::llm;
 
 use super::super::app::{App, ScrollPosition};
-use super::super::constants::SUGGESTIONS;
+use super::super::constants::{self, SUGGESTIONS};
+use super::chat_spawn;
 use super::PendingChat;
 
 /// Handle main input keys (when no popup is open).
@@ -41,42 +40,20 @@ pub(crate) fn handle_main_input(
                 app.input.clear();
                 app.push_user(&input);
                 app.push_assistant(String::new());
-                app.scroll = ScrollPosition::Line(0);
+                app.scroll = ScrollPosition::Bottom;
 
-                let (progress_tx, progress_rx) = mpsc::channel();
-                let (stream_tx, stream_rx) = mpsc::channel();
-                let (result_tx, result_rx) = mpsc::channel();
-                let config = Arc::clone(config);
-                let rt_clone = Arc::clone(rt);
-                let mode = SUGGESTIONS[app.selected_suggestion].to_string();
-                let prev_messages = api_messages.clone();
                 let model_id = app.current_model_id.clone();
-                std::thread::spawn(move || {
-                    let on_progress: llm::OnProgress = Box::new(move |s| {
-                        let _ = progress_tx.send(s.to_string());
-                    });
-                    let on_content_chunk: llm::OnContentChunk = Box::new(move |s| {
-                        let _ = stream_tx.send(s.to_string());
-                    });
-                    let result = rt_clone
-                        .block_on(llm::chat(
-                            config.as_ref(),
-                            &model_id,
-                            &input,
-                            &mode,
-                            None,
-                            prev_messages,
-                            Some(on_progress),
-                            Some(on_content_chunk),
-                        ))
-                        .map_err(|e| e.to_string());
-                    let _ = result_tx.send(result);
-                });
-                *pending_chat = Some(PendingChat {
-                    progress_rx,
-                    stream_rx,
-                    result_rx,
-                });
+                let prev_messages = api_messages.clone();
+                let pc = chat_spawn::spawn_chat(
+                    rt,
+                    Arc::clone(config),
+                    model_id,
+                    input,
+                    SUGGESTIONS[app.selected_suggestion].to_string(),
+                    prev_messages,
+                );
+                app.is_streaming = true;
+                *pending_chat = Some(pc);
             }
             super::HandleResult::Continue
         }
@@ -85,19 +62,19 @@ pub(crate) fn handle_main_input(
             super::HandleResult::Continue
         }
         (KeyCode::Up, _) => {
-            app.scroll_up(3);
+            app.scroll_up(constants::SCROLL_LINES_SMALL);
             super::HandleResult::Continue
         }
         (KeyCode::Down, _) => {
-            app.scroll_down(3);
+            app.scroll_down(constants::SCROLL_LINES_SMALL);
             super::HandleResult::Continue
         }
         (KeyCode::PageUp, _) => {
-            app.scroll_up(10);
+            app.scroll_up(constants::SCROLL_LINES_PAGE);
             super::HandleResult::Continue
         }
         (KeyCode::PageDown, _) => {
-            app.scroll_down(10);
+            app.scroll_down(constants::SCROLL_LINES_PAGE);
             super::HandleResult::Continue
         }
         (KeyCode::Char(c), mods) => {
