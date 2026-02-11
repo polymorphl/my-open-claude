@@ -93,3 +93,69 @@ impl super::Tool for ReadTool {
         Ok(selected.join("\n"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::tools::Tool;
+    use serde_json::json;
+
+    #[test]
+    fn read_full_file() {
+        let tool = ReadTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "line1\nline2\nline3").unwrap();
+        let args = json!({"file_path": file.path().to_str().unwrap()});
+        let result = tool.execute(&args).unwrap();
+        assert_eq!(result, "line1\nline2\nline3");
+    }
+
+    #[test]
+    fn read_line_range() {
+        let tool = ReadTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "a\nb\nc\nd\ne").unwrap();
+        let args = json!({
+            "file_path": file.path().to_str().unwrap(),
+            "start_line": 2,
+            "end_line": 4
+        });
+        let result = tool.execute(&args).unwrap();
+        assert_eq!(result, "b\nc\nd");
+    }
+
+    #[test]
+    fn read_from_line_to_end() {
+        let tool = ReadTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "a\nb\nc").unwrap();
+        let args = json!({
+            "file_path": file.path().to_str().unwrap(),
+            "start_line": 2
+        });
+        let result = tool.execute(&args).unwrap();
+        assert_eq!(result, "b\nc");
+    }
+
+    #[test]
+    fn read_start_line_beyond_file_fails() {
+        let tool = ReadTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "a\nb").unwrap();
+        let args = json!({
+            "file_path": file.path().to_str().unwrap(),
+            "start_line": 10
+        });
+        let err = tool.execute(&args).unwrap_err();
+        assert!(err.to_string().contains("beyond file"));
+    }
+
+    #[test]
+    fn read_empty_file() {
+        let tool = ReadTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let args = json!({"file_path": file.path().to_str().unwrap()});
+        let result = tool.execute(&args).unwrap();
+        assert_eq!(result, "");
+    }
+}

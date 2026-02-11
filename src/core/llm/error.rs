@@ -58,3 +58,43 @@ where
     }
     ChatError::Other(e.into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_api_error_401_cookie_auth() {
+        let e = std::io::Error::new(std::io::ErrorKind::Other, "401 and cookie auth");
+        let err = map_api_error(e);
+        match &err {
+            ChatError::ApiAuth(msg) => {
+                assert!(msg.contains("OPENROUTER_API_KEY"));
+            }
+            _ => panic!("expected ApiAuth, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn map_api_error_json_message() {
+        let e = std::io::Error::new(
+            std::io::ErrorKind::Other,
+            r#"{"error":{"message":"Rate limit exceeded"}}"#,
+        );
+        let err = map_api_error(e);
+        match &err {
+            ChatError::ApiMessage(msg) => assert_eq!(msg, "Rate limit exceeded"),
+            _ => panic!("expected ApiMessage, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn map_api_error_generic() {
+        let e = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let err = map_api_error(e);
+        match &err {
+            ChatError::Other(_) => {}
+            _ => panic!("expected Other, got {:?}", err),
+        }
+    }
+}

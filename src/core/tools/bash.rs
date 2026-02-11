@@ -99,3 +99,48 @@ impl super::Tool for BashTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_destructive_rm() {
+        assert!(is_destructive("rm -rf /"));
+        assert!(is_destructive("rm foo"));
+        assert!(is_destructive("  RM   bar  "));
+    }
+
+    #[test]
+    fn is_destructive_rmdir() {
+        assert!(is_destructive("rmdir /tmp/foo"));
+    }
+
+    #[test]
+    fn is_destructive_mv() {
+        assert!(is_destructive("mv a b"));
+    }
+
+    #[test]
+    fn is_destructive_del() {
+        assert!(is_destructive("del file.txt"));
+    }
+
+    #[test]
+    fn is_destructive_unlink() {
+        assert!(is_destructive("unlink /path/to/file"));
+    }
+
+    #[test]
+    fn is_destructive_false_for_safe_commands() {
+        assert!(!is_destructive("ls"));
+        assert!(!is_destructive("cat file"));
+        assert!(!is_destructive("echo hello"));
+    }
+
+    #[test]
+    fn is_destructive_empty_returns_false() {
+        assert!(!is_destructive(""));
+        assert!(!is_destructive("   "));
+    }
+}
