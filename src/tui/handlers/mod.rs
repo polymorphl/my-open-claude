@@ -26,6 +26,33 @@ use super::shortcuts::Shortcut;
 
 const CREDITS_URL: &str = "https://openrouter.ai/settings/credits";
 
+fn handle_model_selector(
+    key_code: KeyCode,
+    modifiers: crossterm::event::KeyModifiers,
+    app: &mut App,
+    pending_model_fetch: &mut Option<mpsc::Receiver<Result<Vec<ModelInfo>, String>>>,
+) -> HandleResult {
+    let selector = app.model_selector.as_mut().expect("model_selector is Some");
+    let action = model_selector::handle_model_selector_key(key_code, modifiers, selector);
+    match action {
+        model_selector::ModelSelectorAction::Close => {
+            app.model_selector = None;
+            *pending_model_fetch = None;
+        }
+        model_selector::ModelSelectorAction::Select(model) => {
+            app.current_model_id = model.id.clone();
+            app.model_name = model.name.clone();
+            app.context_length = model.context_length;
+            app.token_usage = None;
+            let _ = crate::core::persistence::save_last_model(&model.id);
+            app.model_selector = None;
+            *pending_model_fetch = None;
+        }
+        model_selector::ModelSelectorAction::Keep => {}
+    }
+    HandleResult::Continue
+}
+
 fn handle_history_selector(
     key_code: KeyCode,
     modifiers: crossterm::event::KeyModifiers,
@@ -257,29 +284,8 @@ pub fn handle_key(
     }
 
     // Model selector popup
-    if let Some(ref mut selector) = app.model_selector {
-        let action = model_selector::handle_model_selector_key(
-            key.code,
-            key.modifiers,
-            selector,
-        );
-        match action {
-            model_selector::ModelSelectorAction::Close => {
-                app.model_selector = None;
-                *pending_model_fetch = None;
-            }
-            model_selector::ModelSelectorAction::Select(model) => {
-                app.current_model_id = model.id.clone();
-                app.model_name = model.name.clone();
-                app.context_length = model.context_length;
-                app.token_usage = None;
-                let _ = crate::core::persistence::save_last_model(&model.id);
-                app.model_selector = None;
-                *pending_model_fetch = None;
-            }
-            model_selector::ModelSelectorAction::Keep => {}
-        }
-        return HandleResult::Continue;
+    if app.model_selector.is_some() {
+        return handle_model_selector(key.code, key.modifiers, app, pending_model_fetch);
     }
 
     // Main input handling
