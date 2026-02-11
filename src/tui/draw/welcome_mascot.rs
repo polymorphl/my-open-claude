@@ -1,4 +1,4 @@
-//! Welcome screen: owl ASCII art mascot.
+//! Welcome screen: mascot ASCII art (owl in braille characters).
 
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Style;
@@ -8,7 +8,7 @@ use ratatui::Frame;
 
 use super::super::constants::ACCENT;
 
-/// Owl mascot in braille characters (27 lines).
+/// Mascot ASCII art – owl in braille characters (29 lines).
 const OWL_ART: &[&str] = &[
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣴⣶⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⠟⠉⠉⠙⠻⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⢀⣴⠟⠋⠀⠀⠀⠙⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀",
@@ -41,8 +41,8 @@ const OWL_ART: &[&str] = &[
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠙⠛⠛⠛⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
 ];
 
-/// Draw the owl mascot in ACCENT color (static, no animation).
-pub(crate) fn draw_raccoon(f: &mut Frame, area: Rect) {
+/// Draw the mascot in ACCENT color (static).
+pub(crate) fn draw_mascot(f: &mut Frame, area: Rect) {
     let lines: Vec<Line> = OWL_ART
         .iter()
         .map(|s| Line::from(Span::styled(s.to_string(), Style::default().fg(ACCENT))))

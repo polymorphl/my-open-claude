@@ -5,7 +5,7 @@ mod history;
 mod history_selector_popup;
 mod input;
 mod popups;
-mod welcome_raccoon;
+mod welcome_mascot;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
