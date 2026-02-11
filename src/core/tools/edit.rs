@@ -88,3 +88,53 @@ impl super::Tool for EditTool {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::tools::Tool;
+    use serde_json::json;
+
+    #[test]
+    fn edit_replaces_unique_occurrence() {
+        let tool = EditTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "hello world\n").unwrap();
+        let args = json!({
+            "file_path": file.path().to_str().unwrap(),
+            "old_string": "world",
+            "new_string": "earth"
+        });
+        let result = tool.execute(&args).unwrap();
+        assert!(result.contains("OK"));
+        assert_eq!(std::fs::read_to_string(file.path()).unwrap(), "hello earth\n");
+    }
+
+    #[test]
+    fn edit_fails_when_old_string_not_found() {
+        let tool = EditTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "hello world").unwrap();
+        let args = json!({
+            "file_path": file.path().to_str().unwrap(),
+            "old_string": "xyz",
+            "new_string": "replacement"
+        });
+        let err = tool.execute(&args).unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn edit_fails_when_old_string_ambiguous() {
+        let tool = EditTool;
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), "foo foo foo").unwrap();
+        let args = json!({
+            "file_path": file.path().to_str().unwrap(),
+            "old_string": "foo",
+            "new_string": "bar"
+        });
+        let err = tool.execute(&args).unwrap_err();
+        assert!(err.to_string().contains("found 3 times"));
+    }
+}

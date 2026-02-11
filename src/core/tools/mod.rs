@@ -79,3 +79,33 @@ pub fn all() -> &'static [Box<dyn Tool>] {
 pub fn definitions() -> &'static [Value] {
     CACHED_DEFINITIONS.get_or_init(|| all().iter().map(|t| t.definition()).collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn str_arg_present() {
+        let args = serde_json::json!({"path": "/tmp/foo"});
+        assert_eq!(str_arg(&args, "path"), "/tmp/foo");
+    }
+
+    #[test]
+    fn str_arg_missing_returns_empty() {
+        let args = serde_json::json!({"other": "x"});
+        assert_eq!(str_arg(&args, "path"), "");
+    }
+
+    #[test]
+    fn tool_definition_structure() {
+        let def = tool_definition(
+            "Read",
+            "Read file contents",
+            serde_json::json!({"type": "object"}),
+        );
+        assert_eq!(def["type"], "function");
+        assert_eq!(def["function"]["name"], "Read");
+        assert_eq!(def["function"]["description"], "Read file contents");
+        assert_eq!(def["function"]["parameters"]["type"], "object");
+    }
+}

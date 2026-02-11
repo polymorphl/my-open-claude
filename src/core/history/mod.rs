@@ -188,3 +188,105 @@ pub fn prune_if_needed(config: &Config) -> io::Result<()> {
     storage::save_index(&index)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_message_preview_empty_messages() {
+        let messages: Vec<Value> = vec![];
+        assert_eq!(first_message_preview(&messages, 50), "(No title)");
+    }
+
+    #[test]
+    fn first_message_preview_no_user_message() {
+        let messages = vec![serde_json::json!({"role": "assistant", "content": "Hi"})];
+        assert_eq!(first_message_preview(&messages, 50), "(No title)");
+    }
+
+    #[test]
+    fn first_message_preview_with_user_message() {
+        let messages = vec![
+            serde_json::json!({"role": "system", "content": "You are helpful"}),
+            serde_json::json!({"role": "user", "content": "Hello world"}),
+        ];
+        assert_eq!(first_message_preview(&messages, 50), "Hello world");
+    }
+
+    #[test]
+    fn first_message_preview_truncates_long_message() {
+        let messages = vec![serde_json::json!({
+            "role": "user",
+            "content": "This is a very long message that exceeds the max length"
+        })];
+        let result = first_message_preview(&messages, 20);
+        assert!(result.ends_with('…'));
+        assert!(result.starts_with("This is a very long"));
+    }
+
+    #[test]
+    fn first_message_preview_trims_and_replaces_newlines() {
+        let messages = vec![serde_json::json!({
+            "role": "user",
+            "content": "  Hello\nworld  "
+        })];
+        assert_eq!(first_message_preview(&messages, 50), "Hello world");
+    }
+
+    #[test]
+    fn filter_conversations_empty_query_returns_all() {
+        let convs = vec![
+            ConversationMeta {
+                id: "1".to_string(),
+                title: "Chat 1".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+            ConversationMeta {
+                id: "2".to_string(),
+                title: "Chat 2".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+        let out = filter_conversations(&convs, "");
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn filter_conversations_match_by_title() {
+        let convs = vec![
+            ConversationMeta {
+                id: "1".to_string(),
+                title: "Hello world".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+            ConversationMeta {
+                id: "2".to_string(),
+                title: "Other chat".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+        let out = filter_conversations(&convs, "hello");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].title, "Hello world");
+    }
+
+    #[test]
+    fn filter_conversations_match_by_id() {
+        let convs = vec![
+            ConversationMeta {
+                id: "abc-123".to_string(),
+                title: "Chat".to_string(),
+                created_at: 0,
+                updated_at: 0,
+            },
+        ];
+        let out = filter_conversations(&convs, "abc");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "abc-123");
+    }
+}

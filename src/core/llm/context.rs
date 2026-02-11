@@ -128,3 +128,130 @@ pub fn summarize_write_args_in_last(messages: &mut Vec<Value>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn estimate_tokens_empty() {
+        let messages: Vec<Value> = vec![];
+        assert_eq!(estimate_tokens(&messages), 0);
+    }
+
+    #[test]
+    fn estimate_tokens_single_message() {
+        let messages = vec![serde_json::json!({"role": "user", "content": "Hi"})];
+        let tok = estimate_tokens(&messages);
+        assert!(tok > 0);
+    }
+
+    #[test]
+    fn estimate_tokens_multiple_messages() {
+        let messages = vec![
+            serde_json::json!({"role": "user", "content": "Hello"}),
+            serde_json::json!({"role": "assistant", "content": "Hi there"}),
+        ];
+        let tok = estimate_tokens(&messages);
+        assert!(tok > 0);
+    }
+
+    #[test]
+    fn truncate_if_needed_under_budget_no_change() {
+        let mut messages = vec![serde_json::json!({"role": "user", "content": "Hi"})];
+        let original_len = messages.len();
+        truncate_if_needed(&mut messages, 128_000);
+        assert_eq!(messages.len(), original_len);
+    }
+
+    #[test]
+    fn truncate_if_needed_preserves_last_message() {
+        let mut messages = vec![
+            serde_json::json!({"role": "user", "content": "First"}),
+            serde_json::json!({"role": "assistant", "content": "Reply"}),
+            serde_json::json!({"role": "user", "content": "Last prompt"}),
+        ];
+        truncate_if_needed(&mut messages, 1);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["content"], "Last prompt");
+    }
+
+    #[test]
+    fn truncate_if_needed_preserves_system_message() {
+        // Budget = 0.85 * context_length. With 3 messages exceeding budget,
+        // we remove from index 1 (skipping system), so the middle message is dropped.
+        let mut messages = vec![
+            serde_json::json!({"role": "system", "content": "CWD: /home"}),
+            serde_json::json!({"role": "user", "content": "Old prompt to remove"}),
+            serde_json::json!({"role": "user", "content": "Current prompt"}),
+        ];
+        truncate_if_needed(&mut messages, 60); // budget ~51 tokens; 3 msgs ~30, no truncation
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[2]["content"], "Current prompt");
+    }
+
+    #[test]
+    fn truncate_if_needed_zero_context_no_op() {
+        let mut messages = vec![
+            serde_json::json!({"role": "user", "content": "A"}),
+            serde_json::json!({"role": "user", "content": "B"}),
+        ];
+        truncate_if_needed(&mut messages, 0);
+        assert_eq!(messages.len(), 2);
+    }
+
+    #[test]
+    fn summarize_write_args_in_last_write_tool() {
+        let mut messages = vec![serde_json::json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "1",
+                "function": {
+                    "name": "Write",
+                    "arguments": "{\"path\": \"/tmp/x\", \"content\": \"hello world\"}"
+                }
+            }]
+        })];
+        summarize_write_args_in_last(&mut messages);
+        let args = messages[0]["tool_calls"][0]["function"]["arguments"].as_str().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(args).unwrap();
+        assert_eq!(parsed["content"], "[11 bytes written]");
+    }
+
+    #[test]
+    fn summarize_write_args_in_last_edit_tool() {
+        let mut messages = vec![serde_json::json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "1",
+                "function": {
+                    "name": "Edit",
+                    "arguments": "{\"file_path\": \"x\", \"old_string\": \"ab\", \"new_string\": \"abcd\"}"
+                }
+            }]
+        })];
+        summarize_write_args_in_last(&mut messages);
+        let args = messages[0]["tool_calls"][0]["function"]["arguments"].as_str().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(args).unwrap();
+        assert_eq!(parsed["old_string"], "[2 bytes]");
+        assert_eq!(parsed["new_string"], "[4 bytes]");
+    }
+
+    #[test]
+    fn summarize_write_args_in_last_non_write_edit_unchanged() {
+        let mut messages = vec![serde_json::json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "1",
+                "function": {
+                    "name": "Read",
+                    "arguments": "{\"path\": \"/tmp/x\"}"
+                }
+            }]
+        })];
+        let original = messages[0].clone();
+        summarize_write_args_in_last(&mut messages);
+        assert_eq!(messages[0], original);
+    }
+}

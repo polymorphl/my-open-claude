@@ -32,7 +32,7 @@ impl TokenUsage {
 }
 
 /// Parse token usage from a streaming chunk's `usage` field (present in the final chunk).
-pub(super) fn parse_usage(chunk: &Value) -> Option<TokenUsage> {
+pub(crate) fn parse_usage(chunk: &Value) -> Option<TokenUsage> {
     let usage = chunk.get("usage")?;
     Some(TokenUsage {
         prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
@@ -43,7 +43,7 @@ pub(super) fn parse_usage(chunk: &Value) -> Option<TokenUsage> {
 
 /// Merge a tool_calls delta into accumulated tool calls (by index). Arguments are concatenated.
 /// Skips deltas with out-of-bounds index to handle malformed API responses.
-pub(super) fn merge_tool_call_delta(acc: &mut Vec<Value>, delta_tc: &Value) {
+pub(crate) fn merge_tool_call_delta(acc: &mut Vec<Value>, delta_tc: &Value) {
     let index = match delta_tc["index"].as_u64() {
         Some(i) if i < MAX_TOOL_CALLS as u64 => i as usize,
         _ => return,
@@ -75,5 +75,89 @@ pub(super) fn merge_tool_call_delta(acc: &mut Vec<Value>, delta_tc: &Value) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_usage_valid_chunk() {
+        let chunk = serde_json::json!({
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30
+            }
+        });
+        let usage = parse_usage(&chunk).unwrap();
+        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.completion_tokens, 20);
+        assert_eq!(usage.total_tokens, 30);
+    }
+
+    #[test]
+    fn parse_usage_partial_usage() {
+        let chunk = serde_json::json!({
+            "usage": {
+                "prompt_tokens": 5
+            }
+        });
+        let usage = parse_usage(&chunk).unwrap();
+        assert_eq!(usage.prompt_tokens, 5);
+        assert_eq!(usage.completion_tokens, 0);
+        assert_eq!(usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn parse_usage_no_usage_field() {
+        let chunk = serde_json::json!({"choices": []});
+        assert!(parse_usage(&chunk).is_none());
+    }
+
+    #[test]
+    fn merge_tool_call_delta_index_inbounds() {
+        let mut acc = vec![];
+        let delta = serde_json::json!({
+            "index": 0,
+            "id": "call_123",
+            "function": {
+                "name": "Read",
+                "arguments": "{\"path\": \"/tmp/foo\"}"
+            }
+        });
+        merge_tool_call_delta(&mut acc, &delta);
+        assert_eq!(acc.len(), 1);
+        assert_eq!(acc[0]["id"], "call_123");
+        assert_eq!(acc[0]["function"]["name"], "Read");
+        assert_eq!(acc[0]["function"]["arguments"], "{\"path\": \"/tmp/foo\"}");
+    }
+
+    #[test]
+    fn merge_tool_call_delta_concatenates_arguments() {
+        let mut acc = vec![];
+        let delta1 = serde_json::json!({
+            "index": 0,
+            "function": {"arguments": "{\"path\": \""}
+        });
+        let delta2 = serde_json::json!({
+            "index": 0,
+            "function": {"arguments": "/tmp/foo\"}"}
+        });
+        merge_tool_call_delta(&mut acc, &delta1);
+        merge_tool_call_delta(&mut acc, &delta2);
+        assert_eq!(acc[0]["function"]["arguments"], "{\"path\": \"/tmp/foo\"}");
+    }
+
+    #[test]
+    fn merge_tool_call_delta_out_of_bounds_index_skipped() {
+        let mut acc = vec![];
+        let delta = serde_json::json!({
+            "index": 100,
+            "function": {"name": "Read", "arguments": "{}"}
+        });
+        merge_tool_call_delta(&mut acc, &delta);
+        assert!(acc.is_empty());
     }
 }
