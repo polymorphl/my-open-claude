@@ -23,12 +23,7 @@ pub(super) fn save_conversation_if_dirty(
         return;
     }
     let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-    if let Ok(id) = history::save_conversation(
-        app.conversation_id(),
-        &title,
-        msgs,
-        config,
-    ) {
+    if let Ok(id) = history::save_conversation(app.conversation_id(), &title, msgs, config) {
         app.set_conversation_id(Some(id));
         app.clear_dirty();
     }
@@ -62,12 +57,8 @@ pub(super) fn handle_chat_result(
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Bottom;
             let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-            if let Ok(id) = history::save_conversation(
-                app.conversation_id(),
-                &title,
-                msgs,
-                config,
-            ) {
+            if let Ok(id) = history::save_conversation(app.conversation_id(), &title, msgs, config)
+            {
                 app.set_conversation_id(Some(id));
                 app.clear_dirty();
             }

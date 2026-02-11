@@ -107,7 +107,10 @@ mod tests {
         });
         let result = tool.execute(&args).unwrap();
         assert!(result.contains("OK"));
-        assert_eq!(std::fs::read_to_string(file.path()).unwrap(), "hello earth\n");
+        assert_eq!(
+            std::fs::read_to_string(file.path()).unwrap(),
+            "hello earth\n"
+        );
     }
 
     #[test]

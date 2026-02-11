@@ -6,7 +6,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
-use crate::core::history::{filter_conversations, ConversationMeta};
+use crate::core::history::{ConversationMeta, filter_conversations};
 
 use super::super::app::HistorySelectorState;
 use super::super::constants::ACCENT;
@@ -29,7 +29,11 @@ fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     horizontal_areas[0]
 }
 
-pub(crate) fn draw_history_selector_popup(f: &mut Frame, area: Rect, selector: &mut HistorySelectorState) {
+pub(crate) fn draw_history_selector_popup(
+    f: &mut Frame,
+    area: Rect,
+    selector: &mut HistorySelectorState,
+) {
     let popup_rect = popup_area(area, 60, 50);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -99,7 +103,9 @@ pub(crate) fn draw_history_selector_popup(f: &mut Frame, area: Rect, selector: &
     f.render_widget(filter_para, filter_area);
 
     let filtered = filter_conversations(&selector.conversations, &selector.filter);
-    let clamped_index = selector.selected_index.min(filtered.len().saturating_sub(1));
+    let clamped_index = selector
+        .selected_index
+        .min(filtered.len().saturating_sub(1));
     selector.selected_index = clamped_index;
 
     if filtered.is_empty() {
@@ -129,8 +135,7 @@ pub(crate) fn draw_history_selector_popup(f: &mut Frame, area: Rect, selector: &
 
         selector.list_state.select(Some(selector.selected_index));
 
-        let list = List::new(items)
-            .highlight_style(Style::default().fg(Color::Black).bg(ACCENT));
+        let list = List::new(items).highlight_style(Style::default().fg(Color::Black).bg(ACCENT));
         f.render_stateful_widget(list, list_area, &mut selector.list_state);
     }
 

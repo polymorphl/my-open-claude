@@ -100,14 +100,8 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
     };
     let count = history::list_conversations().len();
     let logo_line = Line::from(vec![
-        Span::styled(
-            format!("{} ", logo_symbol),
-            Style::default().fg(accent),
-        ),
-        Span::styled(
-            format!("{} ", count),
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled(format!("{} ", logo_symbol), Style::default().fg(accent)),
+        Span::styled(format!("{} ", count), Style::default().fg(Color::DarkGray)),
     ]);
     f.render_widget(Paragraph::new(logo_line), logo_area);
 
@@ -148,7 +142,11 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
             let used = usage.total_tokens;
             let ctx = app.context_length;
             let color = token_usage_color(used, ctx);
-            let text = format!("{}/{}", format_tokens_compact(used), format_tokens_compact(ctx));
+            let text = format!(
+                "{}/{}",
+                format_tokens_compact(used),
+                format_tokens_compact(ctx)
+            );
             Line::from(Span::styled(text, Style::default().fg(color)))
         }
         None => {
@@ -171,7 +169,9 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
     };
     let credits_line = Line::from(Span::styled(
         credits_display,
-        Style::default().fg(accent).add_modifier(Modifier::UNDERLINED),
+        Style::default()
+            .fg(accent)
+            .add_modifier(Modifier::UNDERLINED),
     ));
     f.render_widget(
         Paragraph::new(credits_line).alignment(ratatui::layout::Alignment::Right),

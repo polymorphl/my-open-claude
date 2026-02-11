@@ -4,9 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-};
+use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 use super::super::app::{App, ChatMessage};
 use super::super::constants::ACCENT;
@@ -54,9 +52,7 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let mut lines: Vec<Line<'static>> = Vec::new();
     for msg in &app.messages {
         match msg {
-            ChatMessage::User(s) => {
-                draw_message_block(&mut lines, "You ", s, content_width, false)
-            }
+            ChatMessage::User(s) => draw_message_block(&mut lines, "You ", s, content_width, false),
             ChatMessage::Assistant(s) => {
                 let is_error = s.starts_with("Error:");
                 draw_message_block(&mut lines, "Assistant ", s, content_width, is_error)

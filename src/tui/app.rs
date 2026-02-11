@@ -184,13 +184,19 @@ impl App {
     pub(super) fn append_assistant_chunk(&mut self, chunk: &str) {
         match self.messages.last_mut() {
             Some(ChatMessage::Assistant(s)) => s.push_str(chunk),
-            _ => self.messages.push(ChatMessage::Assistant(chunk.to_string())),
+            _ => self
+                .messages
+                .push(ChatMessage::Assistant(chunk.to_string())),
         }
     }
 
     /// Remove the last message if it is an empty Assistant (e.g. before adding tool logs).
     pub(super) fn remove_last_if_empty_assistant(&mut self) {
-        if self.messages.last().is_some_and(|m| matches!(m, ChatMessage::Assistant(s) if s.is_empty())) {
+        if self
+            .messages
+            .last()
+            .is_some_and(|m| matches!(m, ChatMessage::Assistant(s) if s.is_empty()))
+        {
             self.messages.pop();
         }
     }
@@ -213,13 +219,18 @@ impl App {
             self.messages.push(ChatMessage::Thinking);
         } else {
             // Remove Thinking by value (may not be last if we streamed tool_log during thinking)
-            self.messages.retain(|m| !matches!(m, ChatMessage::Thinking));
+            self.messages
+                .retain(|m| !matches!(m, ChatMessage::Thinking));
         }
     }
 
     /// Remove verbose progress (ToolLog) shown during thinking. Keeps history up to last User.
     pub(super) fn clear_progress_after_last_user(&mut self) {
-        if let Some(last_user_idx) = self.messages.iter().rposition(|m| matches!(m, ChatMessage::User(_))) {
+        if let Some(last_user_idx) = self
+            .messages
+            .iter()
+            .rposition(|m| matches!(m, ChatMessage::User(_)))
+        {
             self.messages.truncate(last_user_idx + 1);
         }
     }

@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use walkdir::WalkDir;
 
-use super::{ignore, str_arg, tool_definition, default_search_path, GLOB_DEFAULT_MAX_RESULTS};
+use super::{GLOB_DEFAULT_MAX_RESULTS, default_search_path, ignore, str_arg, tool_definition};
 
 #[derive(Debug, Deserialize)]
 struct GlobArgs {

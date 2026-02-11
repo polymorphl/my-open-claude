@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::fs;
 use walkdir::WalkDir;
 
-use super::{ignore, str_arg, tool_definition, default_search_path, GREP_DEFAULT_MAX_RESULTS};
+use super::{GREP_DEFAULT_MAX_RESULTS, default_search_path, ignore, str_arg, tool_definition};
 
 #[derive(Debug, Deserialize)]
 struct GrepArgs {
@@ -78,8 +78,8 @@ impl super::Tool for GrepTool {
         let parsed: GrepArgs = serde_json::from_value(args.clone())
             .map_err(|e| format!("Invalid arguments: {}", e))?;
 
-        let re = Regex::new(&parsed.pattern)
-            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
+        let re =
+            Regex::new(&parsed.pattern).map_err(|e| format!("Invalid regex pattern: {}", e))?;
 
         let root = std::path::Path::new(&parsed.path);
         if !root.exists() {
@@ -176,25 +176,15 @@ fn search_file(
         }
 
         if args.context_lines == 0 {
-            results.push(format!(
-                "{}:{}:{}",
-                path_str,
-                line_idx + 1,
-                lines[line_idx]
-            ));
+            results.push(format!("{}:{}:{}", path_str, line_idx + 1, lines[line_idx]));
         } else {
             let start = line_idx.saturating_sub(args.context_lines);
             let end = (line_idx + args.context_lines + 1).min(lines.len());
 
-            for i in start..end {
+            for (idx, line) in lines[start..end].iter().enumerate() {
+                let i = start + idx;
                 let prefix = if i == line_idx { ":" } else { "-" };
-                results.push(format!(
-                    "{}{}{}{}",
-                    path_str,
-                    prefix,
-                    i + 1,
-                    format!("{}{}", prefix, lines[i])
-                ));
+                results.push(format!("{}{}{}{}{}", path_str, prefix, i + 1, prefix, line));
             }
         }
     }

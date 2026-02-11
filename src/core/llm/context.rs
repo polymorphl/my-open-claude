@@ -74,7 +74,7 @@ pub fn truncate_if_needed(messages: &mut Vec<Value>, context_length: u64) {
 /// For Edit tool calls: replace `new_string` and `old_string` arguments with `"[N bytes]"`.
 ///
 /// Call this on the last assistant message right after appending it to `messages`.
-pub fn summarize_write_args_in_last(messages: &mut Vec<Value>) {
+pub fn summarize_write_args_in_last(messages: &mut [Value]) {
     let Some(last) = messages.last_mut() else {
         return;
     };
@@ -214,7 +214,9 @@ mod tests {
             }]
         })];
         summarize_write_args_in_last(&mut messages);
-        let args = messages[0]["tool_calls"][0]["function"]["arguments"].as_str().unwrap();
+        let args = messages[0]["tool_calls"][0]["function"]["arguments"]
+            .as_str()
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(args).unwrap();
         assert_eq!(parsed["content"], "[11 bytes written]");
     }
@@ -232,7 +234,9 @@ mod tests {
             }]
         })];
         summarize_write_args_in_last(&mut messages);
-        let args = messages[0]["tool_calls"][0]["function"]["arguments"].as_str().unwrap();
+        let args = messages[0]["tool_calls"][0]["function"]["arguments"]
+            .as_str()
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(args).unwrap();
         assert_eq!(parsed["old_string"], "[2 bytes]");
         assert_eq!(parsed["new_string"], "[4 bytes]");

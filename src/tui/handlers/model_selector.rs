@@ -1,14 +1,14 @@
 //! Handler for model selector popup.
 
 use crossterm::event::{KeyCode, KeyModifiers};
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 
 use ratatui::widgets::ListState;
 use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
-use crate::core::models::{self, filter_models, ModelInfo};
+use crate::core::models::{self, ModelInfo, filter_models};
 
 use super::super::app::{App, ModelSelectorState};
 
@@ -46,8 +46,8 @@ pub(crate) fn handle_model_selector_key(
         }
         KeyCode::Down => {
             if !filtered.is_empty() {
-                selector.selected_index = (selector.selected_index + 1)
-                    .min(filtered.len().saturating_sub(1));
+                selector.selected_index =
+                    (selector.selected_index + 1).min(filtered.len().saturating_sub(1));
             }
             ModelSelectorAction::Keep
         }

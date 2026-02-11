@@ -49,12 +49,11 @@ where
             "API error (401): No cookie auth credentials found. Check OPENROUTER_API_KEY in .env (see env.example).".to_string(),
         );
     }
-    if s.contains("\"error\"") {
-        if let Some((_, rest)) = s.split_once("\"message\":\"") {
-            if let Some((msg, _)) = rest.split_once('"') {
-                return ChatError::ApiMessage(msg.to_string());
-            }
-        }
+    if s.contains("\"error\"")
+        && let Some((_, rest)) = s.split_once("\"message\":\"")
+        && let Some((msg, _)) = rest.split_once('"')
+    {
+        return ChatError::ApiMessage(msg.to_string());
     }
     ChatError::Other(e.into())
 }
@@ -65,7 +64,7 @@ mod tests {
 
     #[test]
     fn map_api_error_401_cookie_auth() {
-        let e = std::io::Error::new(std::io::ErrorKind::Other, "401 and cookie auth");
+        let e = std::io::Error::other("401 and cookie auth");
         let err = map_api_error(e);
         match &err {
             ChatError::ApiAuth(msg) => {
@@ -77,10 +76,7 @@ mod tests {
 
     #[test]
     fn map_api_error_json_message() {
-        let e = std::io::Error::new(
-            std::io::ErrorKind::Other,
-            r#"{"error":{"message":"Rate limit exceeded"}}"#,
-        );
+        let e = std::io::Error::other(r#"{"error":{"message":"Rate limit exceeded"}}"#);
         let err = map_api_error(e);
         match &err {
             ChatError::ApiMessage(msg) => assert_eq!(msg, "Rate limit exceeded"),

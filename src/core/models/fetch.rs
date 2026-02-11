@@ -58,7 +58,7 @@ pub async fn fetch_models_with_tools(
         .await
         .map_err(|e| {
             let msg = e.to_string();
-            Box::new(io::Error::new(io::ErrorKind::Other, msg)) as Box<dyn Error + Send + Sync>
+            Box::new(io::Error::other(msg)) as Box<dyn Error + Send + Sync>
         })?;
 
     let mut model_infos: Vec<ModelInfo> = models

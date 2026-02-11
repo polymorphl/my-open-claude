@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 use serde_json::{Value, json};
 
-pub use bash::{is_destructive, BashTool};
+pub use bash::{BashTool, is_destructive};
 pub use edit::EditTool;
 pub use glob_tool::GlobTool;
 pub use grep::GrepTool;
@@ -32,7 +32,10 @@ pub const GLOB_DEFAULT_MAX_RESULTS: usize = 100;
 
 /// Helper to extract a string argument from tool args JSON.
 pub fn str_arg(args: &Value, key: &str) -> String {
-    args.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
+    args.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
 }
 
 /// Helper to build the standard tool definition structure for the API.

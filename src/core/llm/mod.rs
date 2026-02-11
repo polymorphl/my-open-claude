@@ -15,7 +15,7 @@ use crate::core::config::Config;
 use crate::core::tools;
 use crate::core::tools::Tool;
 
-pub use error::{map_api_error, ChatError};
+pub use error::{ChatError, map_api_error};
 pub use stream::TokenUsage;
 #[allow(unused_imports)]
 pub use tool_execution::is_ask_mode;
@@ -59,6 +59,7 @@ pub type OnContentChunk = Box<dyn Fn(&str) + Send>;
 /// - executes any requested tools (except Write/Bash in Ask mode)
 /// - feeds tool results back to the model
 /// - stops when the model responds without tool calls
+#[allow(clippy::too_many_arguments)]
 pub async fn chat(
     config: &Config,
     model: &str,
@@ -102,8 +103,8 @@ pub async fn chat(
         config,
         model,
         context_length,
-        &tools::definitions(),
-        &tools::all(),
+        tools::definitions(),
+        tools::all(),
         &mut messages,
         &mut tool_log,
         mode,
@@ -116,6 +117,7 @@ pub async fn chat(
 }
 
 /// Resume the chat loop after user confirmed or cancelled a destructive command.
+#[allow(clippy::too_many_arguments)]
 pub async fn chat_resume(
     config: &Config,
     model: &str,
@@ -154,7 +156,7 @@ pub async fn chat_resume(
         model,
         context_length,
         &tools_defs,
-        &tools_list,
+        tools_list,
         &mut messages,
         &mut tool_log,
         &state.mode,

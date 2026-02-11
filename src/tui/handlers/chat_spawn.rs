@@ -1,7 +1,7 @@
 //! Spawns chat requests in a background thread with progress/stream/result channels.
 
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 

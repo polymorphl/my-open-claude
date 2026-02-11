@@ -35,7 +35,9 @@ pub enum Shortcut {
 /// Characters produced by Option+key on Mac (Option not configured as Meta).
 /// Varies by terminal/keyboard. Option+H = Ì (U+00CC), Option+N = ~ (U+007E), Option+M = µ (U+00B5).
 const MAC_OPTION_H: &[char] = &['\u{00CC}', '\u{02D9}', '\u{0127}', '\u{0302}']; // Ì, ˙, ħ, ̂
-const MAC_OPTION_N: &[char] = &['\u{007E}', '\u{02DC}', '\u{0303}', '\u{0144}', '\u{0148}', '\u{00F1}']; // ~, ˜, ̃, ń, ň, ñ
+const MAC_OPTION_N: &[char] = &[
+    '\u{007E}', '\u{02DC}', '\u{0303}', '\u{0144}', '\u{0148}', '\u{00F1}',
+]; // ~, ˜, ̃, ń, ň, ñ
 const MAC_OPTION_M: char = '\u{00B5}'; // µ
 
 fn is_mac_option_h(c: char) -> bool {

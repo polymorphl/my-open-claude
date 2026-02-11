@@ -8,8 +8,8 @@ mod model_selector;
 
 use crossterm::event::{KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::layout::Position;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use serde_json::Value;
@@ -59,7 +59,10 @@ fn handle_history_selector(
     app: &mut App,
     api_messages: &mut Option<Vec<Value>>,
 ) -> HandleResult {
-    let selector = app.history_selector.as_mut().expect("history_selector is Some");
+    let selector = app
+        .history_selector
+        .as_mut()
+        .expect("history_selector is Some");
     let action = history_selector::handle_history_selector_key(key_code, modifiers, selector);
     match action {
         history_selector::HistorySelectorAction::Close => {
@@ -84,10 +87,10 @@ fn handle_history_selector(
                 .min(filtered.len().saturating_sub(1));
         }
         history_selector::HistorySelectorAction::Rename { id, new_title } => {
-            if let Ok(()) = history::rename_conversation(&id, &new_title) {
-                if let Some(meta) = selector.conversations.iter_mut().find(|c| c.id == id) {
-                    meta.title = new_title;
-                }
+            if let Ok(()) = history::rename_conversation(&id, &new_title)
+                && let Some(meta) = selector.conversations.iter_mut().find(|c| c.id == id)
+            {
+                meta.title = new_title;
             }
         }
         history_selector::HistorySelectorAction::Keep => {}
@@ -95,6 +98,7 @@ fn handle_history_selector(
     HandleResult::Continue
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_shortcut(
     shortcut: Shortcut,
     _key: crossterm::event::KeyEvent,
@@ -107,34 +111,32 @@ fn handle_shortcut(
 ) -> HandleResult {
     match shortcut {
         Shortcut::History => {
-            if app.is_dirty() {
-                if let Some(msgs) = api_messages.as_ref() {
-                    if !msgs.is_empty() {
-                        let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-                        if let Ok(id) =
-                            history::save_conversation(app.conversation_id(), &title, msgs, config.as_ref())
-                        {
-                            app.set_conversation_id(Some(id));
-                            app.clear_dirty();
-                        }
-                    }
+            if app.is_dirty()
+                && let Some(msgs) = api_messages.as_ref()
+                && !msgs.is_empty()
+            {
+                let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
+                if let Ok(id) =
+                    history::save_conversation(app.conversation_id(), &title, msgs, config.as_ref())
+                {
+                    app.set_conversation_id(Some(id));
+                    app.clear_dirty();
                 }
             }
             app.history_selector = Some(history_selector::open_history_selector());
         }
         Shortcut::NewConversation => {
-            if app.is_dirty() {
-                if let Some(msgs) = api_messages.as_ref() {
-                    if !msgs.is_empty() {
-                        let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-                        let _ = history::save_conversation(
-                            app.conversation_id(),
-                            &title,
-                            msgs,
-                            config.as_ref(),
-                        );
-                    }
-                }
+            if app.is_dirty()
+                && let Some(msgs) = api_messages.as_ref()
+                && !msgs.is_empty()
+            {
+                let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
+                let _ = history::save_conversation(
+                    app.conversation_id(),
+                    &title,
+                    msgs,
+                    config.as_ref(),
+                );
             }
             app.new_conversation();
             *api_messages = None;
@@ -184,7 +186,8 @@ pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> Handl
     let over_credits = app
         .credits_header_rect
         .is_some_and(|rect| rect.contains(pos));
-    if app.confirm_popup.is_none() && app.model_selector.is_none() && app.history_selector.is_none() {
+    if app.confirm_popup.is_none() && app.model_selector.is_none() && app.history_selector.is_none()
+    {
         match mouse.kind {
             MouseEventKind::Moved => {
                 if app.hovering_credits != over_credits {
@@ -227,7 +230,16 @@ pub fn handle_key(
     if app.escape_pending {
         if let Some(shortcut) = Shortcut::match_key(&key, true) {
             app.escape_pending = false;
-            return handle_shortcut(shortcut, key, app, config, api_messages, pending_chat, pending_model_fetch, rt);
+            return handle_shortcut(
+                shortcut,
+                key,
+                app,
+                config,
+                api_messages,
+                pending_chat,
+                pending_model_fetch,
+                rt,
+            );
         }
         app.escape_pending = false;
     }
@@ -243,7 +255,16 @@ pub fn handle_key(
         {
             // Fall through to input handler
         } else if shortcut != Shortcut::None {
-            return handle_shortcut(shortcut, key, app, config, api_messages, pending_chat, pending_model_fetch, rt);
+            return handle_shortcut(
+                shortcut,
+                key,
+                app,
+                config,
+                api_messages,
+                pending_chat,
+                pending_model_fetch,
+                rt,
+            );
         }
     }
 

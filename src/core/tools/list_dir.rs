@@ -75,10 +75,7 @@ impl super::Tool for ListDirTool {
                 continue;
             }
 
-            let rel_path = entry
-                .path()
-                .strip_prefix(root)
-                .unwrap_or(entry.path());
+            let rel_path = entry.path().strip_prefix(root).unwrap_or(entry.path());
 
             let display = rel_path.display().to_string();
 

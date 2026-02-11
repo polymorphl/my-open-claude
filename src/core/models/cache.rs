@@ -24,10 +24,7 @@ pub fn load_cached_models() -> Option<Vec<ModelInfo>> {
     let path = cache_path()?;
     let data = fs::read_to_string(path).ok()?;
     let cached: CachedModels = serde_json::from_str(&data).ok()?;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_secs();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
     let age_secs = now.saturating_sub(cached.fetched_at);
     if age_secs < CACHE_TTL.as_secs() {
         Some(cached.models)
@@ -38,19 +35,22 @@ pub fn load_cached_models() -> Option<Vec<ModelInfo>> {
 
 /// Save models to cache.
 pub fn save_models_to_cache(models: &[ModelInfo]) -> io::Result<()> {
-    let path = cache_path().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No cache dir"))?;
+    let path =
+        cache_path().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No cache dir"))?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+        .map_err(io::Error::other)?
         .as_secs();
     let cached = CachedModels {
         fetched_at: now,
         models: models.to_vec(),
     };
-    fs::write(path, serde_json::to_string_pretty(&cached).map_err(|e| {
-        io::Error::new(io::ErrorKind::InvalidData, e)
-    })?)
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&cached)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+    )
 }
