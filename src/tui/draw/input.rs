@@ -9,7 +9,7 @@ use std::env;
 
 use super::super::app::App;
 use super::super::constants::{ACCENT, SUGGESTIONS};
-use super::header::TITLE_TEXT;
+use super::welcome_mascot;
 
 /// Width of the centered input when in welcome (no conversation) mode.
 const WELCOME_INPUT_WIDTH: u16 = 64;
@@ -18,8 +18,7 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     let inner_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Length(2),
+            Constraint::Length(29),
             Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Length(1),
@@ -27,18 +26,11 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(area);
 
-    let title_area = inner_chunks[1];
-    let input_area_outer = inner_chunks[3];
-    let suggestions_area = inner_chunks[4];
+    let mascot_area = inner_chunks[0];
+    let input_area_outer = inner_chunks[2];
+    let suggestions_area = inner_chunks[3];
 
-    let title = Line::from(vec![Span::styled(
-        TITLE_TEXT,
-        Style::default().fg(ACCENT).add_modifier(ratatui::style::Modifier::BOLD),
-    )]);
-    f.render_widget(
-        Paragraph::new(title).alignment(ratatui::layout::Alignment::Center),
-        title_area,
-    );
+    welcome_mascot::draw_mascot(f, mascot_area);
 
     let input_width = WELCOME_INPUT_WIDTH.min(area.width);
     let input_area = Rect {
@@ -119,7 +111,7 @@ fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
 pub(crate) fn draw_bottom_bar(f: &mut Frame, _app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(72)])
+        .constraints([Constraint::Min(1), Constraint::Length(100)])
         .split(area);
     let path_area = chunks[0];
     let shortcuts_area = chunks[1];
@@ -144,18 +136,7 @@ pub(crate) fn draw_bottom_bar(f: &mut Frame, _app: &mut App, area: Rect) {
         path_area,
     );
 
-    let shortcuts = Line::from(vec![
-        Span::styled("Enter ", Style::default().fg(Color::DarkGray)),
-        Span::raw("send"),
-        Span::styled("  ↑↓ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("scroll"),
-        Span::styled("  Alt+M/F2 ", Style::default().fg(Color::DarkGray)),
-        Span::raw("model"),
-        Span::styled("  credits ", Style::default().fg(Color::DarkGray)),
-        Span::raw("(click) "),
-        Span::styled("  Ctrl+C ", Style::default().fg(Color::DarkGray)),
-        Span::raw("quit"),
-    ]);
+    let shortcuts = super::super::shortcuts::labels::bottom_bar();
     f.render_widget(
         Paragraph::new(shortcuts).alignment(ratatui::layout::Alignment::Right),
         shortcuts_area,

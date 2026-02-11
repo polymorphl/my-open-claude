@@ -56,7 +56,7 @@ pub(crate) fn draw_model_selector_popup(f: &mut Frame, area: Rect, selector: &mu
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ACCENT))
-        .title(" Select model (Alt+M / F2) ");
+        .title(" Select model (Alt+M) ");
 
     let inner = block.inner(popup_rect);
     f.render_widget(Clear, popup_rect);
@@ -161,7 +161,7 @@ pub(crate) fn draw_model_selector_popup(f: &mut Frame, area: Rect, selector: &mu
         Span::raw("cancel  "),
         Span::styled("type ", Style::default().fg(Color::DarkGray)),
         Span::raw("filter  "),
-        Span::styled("Alt+M/F2 ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Alt+M ", Style::default().fg(Color::DarkGray)),
         Span::raw("reopen"),
     ]));
     f.render_widget(hint, hint_area);

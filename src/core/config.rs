@@ -11,6 +11,8 @@ pub struct Config {
     #[allow(dead_code)] // for future openrouter base_url / credits integration
     pub base_url: String,
     pub api_key: String,
+    /// Max number of conversations to keep. Prune older ones when exceeded.
+    pub max_conversations: u32,
 }
 
 #[derive(Debug)]
@@ -54,6 +56,12 @@ pub fn load() -> Result<Config, ConfigError> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
+    const DEFAULT_MAX_CONVERSATIONS: u32 = 50;
+    let max_conversations = env::var("MY_OPEN_CLAUDE_MAX_CONVERSATIONS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(DEFAULT_MAX_CONVERSATIONS);
+
     let openai_config = OpenAIConfig::new()
         .with_api_base(&base_url)
         .with_api_key(&api_key);
@@ -63,5 +71,6 @@ pub fn load() -> Result<Config, ConfigError> {
         model_id,
         base_url,
         api_key,
+        max_conversations,
     })
 }
