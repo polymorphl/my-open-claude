@@ -9,20 +9,19 @@ const CONTEXT_BUDGET_RATIO: f64 = 0.85;
 const WRITE_TOOL: &str = "Write";
 const EDIT_TOOL: &str = "Edit";
 
+/// Estimate the number of tokens in a single message.
+/// Uses JSON byte length / 4 as a rough chars-to-tokens ratio.
+fn estimate_message_tokens(msg: &Value) -> usize {
+    serde_json::to_vec(msg).map(|v| v.len()).unwrap_or(0) / 4
+}
+
 /// Estimate the number of tokens in a set of messages.
 ///
 /// Uses a conservative heuristic: JSON-serialized byte length / 4.
 /// This is a rough approximation suitable for pre-call budget checks;
 /// actual usage comes from the API response.
 pub fn estimate_tokens(messages: &[Value]) -> usize {
-    messages
-        .iter()
-        .map(|m| {
-            // Serialize to JSON and divide by 4 (rough chars-to-tokens ratio).
-            let json_len = serde_json::to_string(m).map(|s| s.len()).unwrap_or(0);
-            json_len / 4
-        })
-        .sum()
+    messages.iter().map(estimate_message_tokens).sum()
 }
 
 /// Truncate the oldest messages if the estimated token count exceeds the model's context budget.
@@ -31,21 +30,27 @@ pub fn estimate_tokens(messages: &[Value]) -> usize {
 /// - Budget = context_length * 85%
 /// - Always preserve at least the last message (the current user prompt)
 /// - Remove the oldest messages first (index 0, 1, ...) until under budget
+///
+/// Runs in O(n): computes per-message sizes once, then subtracts when removing.
 pub fn truncate_if_needed(messages: &mut Vec<Value>, context_length: u64) {
     if context_length == 0 {
         return;
     }
 
     let budget = (context_length as f64 * CONTEXT_BUDGET_RATIO) as usize;
-    let estimated = estimate_tokens(messages);
 
-    if estimated <= budget || messages.len() <= 1 {
+    // Precompute token estimate per message (O(n) once).
+    let mut sizes: Vec<usize> = messages.iter().map(estimate_message_tokens).collect();
+    let mut total: usize = sizes.iter().sum();
+
+    if total <= budget || messages.len() <= 1 {
         return;
     }
 
-    // Remove messages from the front until we're under budget.
-    // Always keep at least the last message.
-    while messages.len() > 1 && estimate_tokens(messages) > budget {
+    // Remove from front, subtracting from total (O(1) per removal).
+    while messages.len() > 1 && total > budget {
+        let removed = sizes.remove(0);
+        total = total.saturating_sub(removed);
         messages.remove(0);
     }
 }

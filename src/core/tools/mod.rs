@@ -7,6 +7,8 @@ mod list_dir;
 mod read;
 mod write;
 
+use std::sync::OnceLock;
+
 use serde_json::{Value, json};
 
 pub use bash::{is_destructive, BashTool};
@@ -53,8 +55,10 @@ pub trait Tool: Send + Sync {
     fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>>;
 }
 
-/// All registered tools.
-pub fn all() -> Vec<Box<dyn Tool>> {
+static CACHED_TOOLS: OnceLock<Vec<Box<dyn Tool>>> = OnceLock::new();
+static CACHED_DEFINITIONS: OnceLock<Vec<Value>> = OnceLock::new();
+
+fn init_tools() -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(BashTool),
         Box::new(ReadTool),
@@ -66,7 +70,12 @@ pub fn all() -> Vec<Box<dyn Tool>> {
     ]
 }
 
-/// Tool definitions for the API (order must match `all()`).
-pub fn definitions() -> Vec<Value> {
-    all().iter().map(|t| t.definition()).collect()
+/// All registered tools. Cached after first call.
+pub fn all() -> &'static [Box<dyn Tool>] {
+    CACHED_TOOLS.get_or_init(init_tools)
+}
+
+/// Tool definitions for the API (order must match `all()`). Cached after first call.
+pub fn definitions() -> &'static [Value] {
+    CACHED_DEFINITIONS.get_or_init(|| all().iter().map(|t| t.definition()).collect())
 }
