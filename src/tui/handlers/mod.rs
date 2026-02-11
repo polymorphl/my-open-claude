@@ -9,6 +9,7 @@ use crossterm::event::{KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::layout::Position;
 use std::sync::mpsc;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -83,6 +84,8 @@ pub struct PendingChat {
     pub progress_rx: mpsc::Receiver<String>,
     pub stream_rx: mpsc::Receiver<String>,
     pub result_rx: mpsc::Receiver<Result<llm::ChatResult, String>>,
+    /// Token to cancel the in-flight request.
+    pub cancel_token: CancellationToken,
 }
 
 /// Result of handling an event: continue the loop or exit.
@@ -173,12 +176,16 @@ pub fn handle_key(
         }
     }
 
-    // Esc alone: start of Option+key sequence (no popup open)
+    // Esc: cancel in-flight request if one is pending, otherwise start Option+key sequence.
     if Shortcut::is_escape(&key)
         && app.confirm_popup.is_none()
         && app.model_selector.is_none()
         && app.history_selector.is_none()
     {
+        if pending_chat.is_some() {
+            pending_chat.as_ref().unwrap().cancel_token.cancel();
+            return HandleResult::Continue;
+        }
         app.escape_pending = true;
         return HandleResult::Continue;
     }
@@ -215,6 +222,7 @@ pub fn handle_key(
                 if let Some(messages) = history::load_conversation(&id) {
                     app.set_messages_from_api(&messages);
                     app.set_conversation_id(Some(id.clone()));
+                    app.scroll = super::app::ScrollPosition::Bottom;
                     *api_messages = Some(messages);
                 }
                 app.history_selector = None;

@@ -157,6 +157,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
             }
             if let Ok(result) = chat.result_rx.try_recv() {
                 app.set_thinking(false);
+                app.is_streaming = false;
                 handle_chat_result(&mut app, &mut api_messages, result, true, config.as_ref());
                 pending_chat = None;
             }
@@ -239,7 +240,7 @@ fn handle_chat_result(
                 }
             }
             app.replace_or_push_assistant(content);
-            app.scroll = app::ScrollPosition::Line(0);
+            app.scroll = app::ScrollPosition::Bottom;
             let title = first_message_preview(&messages, 60);
             if let Ok(id) = history::save_conversation(
                 app.conversation_id(),
@@ -254,9 +255,14 @@ fn handle_chat_result(
         Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
             app.confirm_popup = Some(app::ConfirmPopup { command, state });
         }
+        Err(ref e) if e.to_string() == "Request cancelled" => {
+            // Keep whatever partial content was already streamed to the UI.
+            // Append a subtle cancellation notice.
+            app.append_cancelled_notice();
+        }
         Err(e) => {
             app.replace_or_push_assistant(format!("Error: {}", e));
-            app.scroll = app::ScrollPosition::Line(0);
+            app.scroll = app::ScrollPosition::Bottom;
         }
     }
 }

@@ -106,6 +106,8 @@ pub struct App {
     pub(crate) dirty: bool,
     /// Esc was pressed; next key = Option+key (Mac terminals with "Use option as meta").
     pub(crate) escape_pending: bool,
+    /// True while a chat request is in flight (used by bottom bar to show cancel hint).
+    pub(crate) is_streaming: bool,
 }
 
 impl App {
@@ -129,6 +131,7 @@ impl App {
             current_conversation_id: None,
             dirty: false,
             escape_pending: false,
+            is_streaming: false,
         }
     }
 
@@ -224,6 +227,22 @@ impl App {
     pub(super) fn clear_progress_after_last_user(&mut self) {
         if let Some(last_user_idx) = self.messages.iter().rposition(|m| matches!(m, ChatMessage::User(_))) {
             self.messages.truncate(last_user_idx + 1);
+        }
+    }
+
+    /// Append "[cancelled]" to the last assistant message (or create one).
+    /// Keeps whatever partial content was already streamed.
+    pub(super) fn append_cancelled_notice(&mut self) {
+        // Remove trailing empty assistant and tool-log lines from streaming.
+        self.remove_last_if_empty_assistant();
+        match self.messages.last_mut() {
+            Some(ChatMessage::Assistant(s)) if !s.is_empty() => {
+                s.push_str("\n\n*[Request cancelled]*");
+            }
+            _ => {
+                self.messages
+                    .push(ChatMessage::Assistant("*[Request cancelled]*".to_string()));
+            }
         }
     }
 

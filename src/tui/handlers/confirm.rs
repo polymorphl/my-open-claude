@@ -3,6 +3,7 @@
 use crossterm::event::KeyCode;
 use std::sync::mpsc;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use tokio::runtime::Runtime;
 
@@ -38,10 +39,12 @@ pub(crate) fn handle_confirm_popup(
     if confirmed || cancelled {
         if pending_chat_is_none {
             app.push_assistant(String::new());
-            app.scroll = ScrollPosition::Line(0);
+            app.scroll = ScrollPosition::Bottom;
             let (progress_tx, progress_rx) = mpsc::channel();
             let (stream_tx, stream_rx) = mpsc::channel();
             let (result_tx, result_rx) = mpsc::channel();
+            let cancel_token = CancellationToken::new();
+            let cancel_token_clone = cancel_token.clone();
             let config = Arc::clone(config);
             let model_id = app.current_model_id.clone();
             let rt_clone = Arc::clone(rt);
@@ -59,6 +62,7 @@ pub(crate) fn handle_confirm_popup(
                     confirmed,
                     Some(on_progress),
                     Some(on_content_chunk),
+                    Some(cancel_token_clone),
                 ));
                 let _ = result_tx.send(result.map_err(|e| e.to_string()));
             });
@@ -66,6 +70,7 @@ pub(crate) fn handle_confirm_popup(
                 progress_rx,
                 stream_rx,
                 result_rx,
+                cancel_token,
             })
         } else {
             // Can't process yet; put popup back

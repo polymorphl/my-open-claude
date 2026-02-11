@@ -3,6 +3,7 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::sync::mpsc;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -41,11 +42,13 @@ pub(crate) fn handle_main_input(
                 app.input.clear();
                 app.push_user(&input);
                 app.push_assistant(String::new());
-                app.scroll = ScrollPosition::Line(0);
+                app.scroll = ScrollPosition::Bottom;
 
                 let (progress_tx, progress_rx) = mpsc::channel();
                 let (stream_tx, stream_rx) = mpsc::channel();
                 let (result_tx, result_rx) = mpsc::channel();
+                let cancel_token = CancellationToken::new();
+                let cancel_token_clone = cancel_token.clone();
                 let config = Arc::clone(config);
                 let rt_clone = Arc::clone(rt);
                 let mode = SUGGESTIONS[app.selected_suggestion].to_string();
@@ -68,14 +71,17 @@ pub(crate) fn handle_main_input(
                             prev_messages,
                             Some(on_progress),
                             Some(on_content_chunk),
+                            Some(cancel_token_clone),
                         ))
                         .map_err(|e| e.to_string());
                     let _ = result_tx.send(result);
                 });
+                app.is_streaming = true;
                 *pending_chat = Some(PendingChat {
                     progress_rx,
                     stream_rx,
                     result_rx,
+                    cancel_token,
                 });
             }
             super::HandleResult::Continue

@@ -9,6 +9,8 @@ pub enum ChatError {
         tool: String,
         source: serde_json::Error,
     },
+    /// The request was cancelled by the user.
+    Cancelled,
     Other(Box<dyn std::error::Error + Send + Sync + 'static>),
 }
 
@@ -20,6 +22,7 @@ impl std::fmt::Display for ChatError {
             ChatError::ToolArgs { tool, source } => {
                 write!(f, "Invalid tool arguments for {}: {}", tool, source)
             }
+            ChatError::Cancelled => write!(f, "Request cancelled"),
             ChatError::Other(e) => write!(f, "{}", e),
         }
     }
@@ -30,7 +33,7 @@ impl std::error::Error for ChatError {
         match self {
             ChatError::ToolArgs { source, .. } => Some(source),
             ChatError::Other(e) => e.source(),
-            _ => None,
+            ChatError::Cancelled | ChatError::ApiAuth(_) | ChatError::ApiMessage(_) => None,
         }
     }
 }
