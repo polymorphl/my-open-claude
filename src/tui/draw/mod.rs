@@ -2,6 +2,7 @@
 
 mod header;
 mod history;
+mod history_selector_popup;
 mod input;
 mod popups;
 
@@ -48,5 +49,8 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
     if let Some(ref mut selector) = app.model_selector {
         popups::draw_model_selector_popup(f, area, selector);
+    }
+    if let Some(ref mut selector) = app.history_selector {
+        history_selector_popup::draw_history_selector_popup(f, area, selector);
     }
 }

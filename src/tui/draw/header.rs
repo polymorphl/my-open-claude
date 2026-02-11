@@ -1,4 +1,4 @@
-//! Header: logo, title, model name, credits.
+//! Header: logo, conversation count, title, model name, credits.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -6,6 +6,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use std::time::Instant;
+
+use crate::core::history;
 
 use super::super::app::App;
 
@@ -17,8 +19,14 @@ const MODEL_HEADER_WIDTH: u16 = 28;
 /// Width for credits display in header (e.g. "$12.50" or "—" when loading).
 const CREDITS_HEADER_WIDTH: u16 = 12;
 
-/// Title text for header (used for centering).
-pub(crate) const TITLE_TEXT: &str = "my-open-claude ";
+/// Title text for header (used for centering). Append " *" when dirty.
+pub(crate) fn title_text(app: &App) -> String {
+    if app.is_dirty() {
+        "my-open-claude * ".to_string()
+    } else {
+        "my-open-claude ".to_string()
+    }
+}
 
 pub(crate) fn is_thinking(app: &App) -> bool {
     app.messages
@@ -31,7 +39,7 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
     let header_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(2),
+            Constraint::Length(8),
             Constraint::Min(0),
             Constraint::Length(MODEL_HEADER_WIDTH),
             Constraint::Length(CREDITS_HEADER_WIDTH),
@@ -50,13 +58,21 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
     } else {
         super::super::constants::LOGO_IDLE
     };
-    let logo_line = Line::from(Span::styled(
-        format!("{} ", logo_symbol),
-        Style::default().fg(accent),
-    ));
+    let count = history::list_conversations().len();
+    let logo_line = Line::from(vec![
+        Span::styled(
+            format!("{} ", logo_symbol),
+            Style::default().fg(accent),
+        ),
+        Span::styled(
+            format!("{} ", count),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]);
     f.render_widget(Paragraph::new(logo_line), logo_area);
 
-    let title_len = TITLE_TEXT.len() as u16;
+    let title_str = title_text(app);
+    let title_len = title_str.len() as u16;
     let title_area = Rect {
         x: area.x + area.width.saturating_sub(title_len) / 2,
         y: area.y,
@@ -64,7 +80,7 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
         height: area.height,
     };
     let title = Line::from(vec![Span::styled(
-        TITLE_TEXT,
+        title_str,
         Style::default().fg(accent).add_modifier(Modifier::BOLD),
     )]);
     f.render_widget(Paragraph::new(title), title_area);
