@@ -232,7 +232,8 @@ fn handle_chat_result(
             messages,
             usage,
         }) => {
-            *api_messages = Some(messages.clone());
+            *api_messages = Some(messages);
+            let msgs = api_messages.as_ref().unwrap();
             app.token_usage = Some(usage);
             if tool_log_already_streamed {
                 app.clear_progress_after_last_user();
@@ -243,11 +244,11 @@ fn handle_chat_result(
             }
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Bottom;
-            let title = first_message_preview(&messages, constants::TITLE_PREVIEW_MAX_LEN);
+            let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
             if let Ok(id) = history::save_conversation(
                 app.conversation_id(),
                 &title,
-                &messages,
+                msgs,
                 config,
             ) {
                 app.set_conversation_id(Some(id));
