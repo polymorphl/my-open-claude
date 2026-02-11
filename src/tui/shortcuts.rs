@@ -96,20 +96,29 @@ pub mod labels {
 
     const DIM: Color = Color::DarkGray;
 
-    pub fn bottom_bar() -> Line<'static> {
-        Line::from(vec![
-            Span::styled("Enter ", DIM),
-            Span::raw("send"),
-            Span::styled("  ↑↓ ", DIM),
-            Span::raw("scroll"),
-            Span::styled("  Alt+H ", DIM),
-            Span::raw("history"),
-            Span::styled("  Alt+N ", DIM),
-            Span::raw("new"),
-            Span::styled("  Alt+M ", DIM),
-            Span::raw("model"),
-            Span::styled("  Ctrl+C ", DIM),
-            Span::raw("quit"),
-        ])
+    pub fn bottom_bar(is_streaming: bool) -> Line<'static> {
+        if is_streaming {
+            Line::from(vec![
+                Span::styled("Esc ", Color::Yellow),
+                Span::raw("cancel"),
+                Span::styled("  ↑↓ ", DIM),
+                Span::raw("scroll"),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("Enter ", DIM),
+                Span::raw("send"),
+                Span::styled("  ↑↓ ", DIM),
+                Span::raw("scroll"),
+                Span::styled("  Alt+H ", DIM),
+                Span::raw("history"),
+                Span::styled("  Alt+N ", DIM),
+                Span::raw("new"),
+                Span::styled("  Alt+M ", DIM),
+                Span::raw("model"),
+                Span::styled("  Ctrl+C ", DIM),
+                Span::raw("quit"),
+            ])
+        }
     }
 }

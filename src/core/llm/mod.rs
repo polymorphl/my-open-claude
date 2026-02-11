@@ -8,6 +8,7 @@ mod tool_execution;
 use async_openai::Client;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::core::config::Config;
 use crate::core::tools;
@@ -64,6 +65,7 @@ pub async fn chat(
     previous_messages: Option<Vec<Value>>,
     on_progress: Option<OnProgress>,
     on_content_chunk: Option<OnContentChunk>,
+    cancel_token: Option<CancellationToken>,
 ) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
@@ -87,6 +89,7 @@ pub async fn chat(
         &confirm_destructive,
         on_progress.as_deref(),
         on_content_chunk.as_deref(),
+        cancel_token.as_ref(),
     )
     .await
 }
@@ -99,6 +102,7 @@ pub async fn chat_resume(
     confirmed: bool,
     on_progress: Option<OnProgress>,
     on_content_chunk: Option<OnContentChunk>,
+    cancel_token: Option<CancellationToken>,
 ) -> Result<ChatResult, ChatError> {
     let client = Client::with_config(config.openai_config.clone());
 
@@ -134,6 +138,7 @@ pub async fn chat_resume(
         &None,
         on_progress.as_deref(),
         on_content_chunk.as_deref(),
+        cancel_token.as_ref(),
     )
     .await
 }

@@ -5,6 +5,7 @@ use async_openai::Client;
 use futures::StreamExt;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 use crate::core::confirm::ConfirmDestructive;
 use crate::core::config::Config;
@@ -39,27 +40,60 @@ pub(super) async fn run_agent_loop(
     confirm_destructive: &Option<ConfirmDestructive>,
     on_progress: Option<&(dyn Fn(&str) + Send)>,
     on_content_chunk: Option<&(dyn Fn(&str) + Send)>,
+    cancel_token: Option<&CancellationToken>,
 ) -> Result<ChatResult, ChatError> {
     loop {
+        // Check cancellation before starting a new API call.
+        if cancel_token.is_some_and(|t| t.is_cancelled()) {
+            return Err(ChatError::Cancelled);
+        }
+
         if let Some(ref progress) = on_progress {
             progress("Calling API...");
         }
-        let mut stream = client
-            .chat()
-            .create_stream_byot::<_, Value>(json!({
-                "model": model,
-                "messages": messages.as_ref(),
-                "tool_choice": "auto",
-                "tools": tools_defs,
-                "stream": true,
-            }))
-            .await
-            .map_err(map_api_error)?;
+
+        // Start the streaming API call, racing against cancellation.
+        let chat_api = client.chat();
+        let stream_future = chat_api.create_stream_byot::<_, Value>(json!({
+            "model": model,
+            "messages": messages.as_ref(),
+            "tool_choice": "auto",
+            "tools": tools_defs,
+            "stream": true,
+        }));
+
+        let stream_result = if let Some(token) = cancel_token {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    return Err(ChatError::Cancelled);
+                }
+                result = stream_future => result,
+            }
+        } else {
+            stream_future.await
+        };
+
+        let mut stream = stream_result.map_err(map_api_error)?;
 
         let mut full_content = String::new();
         let mut accumulated_tool_calls: Vec<Value> = Vec::new();
 
-        while let Some(chunk_result) = stream.next().await {
+        // Read stream chunks, racing against cancellation.
+        loop {
+            let chunk_opt = if let Some(token) = cancel_token {
+                tokio::select! {
+                    biased;
+                    _ = token.cancelled() => {
+                        return Err(ChatError::Cancelled);
+                    }
+                    chunk = stream.next() => chunk,
+                }
+            } else {
+                stream.next().await
+            };
+
+            let Some(chunk_result) = chunk_opt else { break };
             let chunk = chunk_result.map_err(map_api_error)?;
 
             if let Some(err) = chunk.get("error") {
@@ -130,7 +164,17 @@ pub(super) async fn run_agent_loop(
             return Ok(make_complete(&full_content, tool_log.as_ref(), messages.as_ref()));
         }
 
+        // Check cancellation before executing tools.
+        if cancel_token.is_some_and(|t| t.is_cancelled()) {
+            return Err(ChatError::Cancelled);
+        }
+
         for tool_call in tool_calls {
+            // Check cancellation before each tool call.
+            if cancel_token.is_some_and(|t| t.is_cancelled()) {
+                return Err(ChatError::Cancelled);
+            }
+
             if let Some(needs_confirmation) = tool_execution::execute_tool_call(
                 tool_call,
                 tools_list,
