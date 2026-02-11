@@ -4,10 +4,11 @@ mod app;
 mod constants;
 mod draw;
 mod handlers;
+mod shortcuts;
 mod text;
 
 #[allow(unused_imports)]
-pub use app::{App, ChatMessage, ConfirmPopup, ModelSelectorState};
+pub use app::{App, ChatMessage, ConfirmPopup, HistorySelectorState, ModelSelectorState};
 
 use crossterm::event::{self, Event};
 use crossterm::execute;
@@ -22,6 +23,7 @@ use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
 use crate::core::credits;
+use crate::core::history::{self, first_message_preview};
 use crate::core::llm;
 use crate::core::models::{self};
 
@@ -155,7 +157,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
             }
             if let Ok(result) = chat.result_rx.try_recv() {
                 app.set_thinking(false);
-                handle_chat_result(&mut app, &mut api_messages, result, true);
+                handle_chat_result(&mut app, &mut api_messages, result, true, config.as_ref());
                 pending_chat = None;
             }
         }
@@ -178,6 +180,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                         &rt,
                     );
                     if result == HandleResult::Break {
+                        save_conversation_if_dirty(&mut app, &api_messages, config.as_ref());
                         break;
                     }
                 }
@@ -190,11 +193,36 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     Ok(())
 }
 
+fn save_conversation_if_dirty(
+    app: &mut App,
+    api_messages: &Option<Vec<Value>>,
+    config: &Config,
+) {
+    if !app.is_dirty() {
+        return;
+    }
+    let Some(msgs) = api_messages else { return };
+    if msgs.is_empty() {
+        return;
+    }
+    let title = first_message_preview(msgs, 60);
+    if let Ok(id) = history::save_conversation(
+        app.conversation_id(),
+        &title,
+        msgs,
+        config,
+    ) {
+        app.set_conversation_id(Some(id));
+        app.clear_dirty();
+    }
+}
+
 fn handle_chat_result(
     app: &mut App,
     api_messages: &mut Option<Vec<Value>>,
     result: Result<llm::ChatResult, impl std::fmt::Display>,
     tool_log_already_streamed: bool,
+    config: &Config,
 ) {
     match result {
         Ok(llm::ChatResult::Complete {
@@ -202,7 +230,7 @@ fn handle_chat_result(
             tool_log,
             messages,
         }) => {
-            *api_messages = Some(messages);
+            *api_messages = Some(messages.clone());
             if tool_log_already_streamed {
                 app.clear_progress_after_last_user();
             } else {
@@ -212,6 +240,16 @@ fn handle_chat_result(
             }
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Line(0);
+            let title = first_message_preview(&messages, 60);
+            if let Ok(id) = history::save_conversation(
+                app.conversation_id(),
+                &title,
+                &messages,
+                config,
+            ) {
+                app.set_conversation_id(Some(id));
+                app.clear_dirty();
+            }
         }
         Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
             app.confirm_popup = Some(app::ConfirmPopup { command, state });

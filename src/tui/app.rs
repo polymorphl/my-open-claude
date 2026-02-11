@@ -1,10 +1,27 @@
 //! TUI application state: messages, input, scroll, suggestions.
 
+use crate::core::history::ConversationMeta;
 use crate::core::llm::ConfirmState;
 use crate::core::models::ModelInfo;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
+use serde_json::Value;
 use std::time::Instant;
+
+fn extract_content_value(msg: &Value) -> Option<String> {
+    let content = msg.get("content")?;
+    if let Some(s) = content.as_str() {
+        return Some(s.to_string());
+    }
+    if let Some(arr) = content.as_array() {
+        for block in arr {
+            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                return Some(text.to_string());
+            }
+        }
+    }
+    None
+}
 
 /// Messages displayed in the history (user or assistant).
 #[derive(Clone)]
@@ -30,6 +47,16 @@ pub struct ModelSelectorState {
     pub fetch_error: Option<String>,
     /// Filter query (case-insensitive search on model id/name).
     pub filter: String,
+}
+
+/// State for the history selector popup (Alt+H).
+pub struct HistorySelectorState {
+    pub conversations: Vec<ConversationMeta>,
+    pub selected_index: usize,
+    pub list_state: ListState,
+    pub filter: String,
+    /// When renaming: (conversation_id, new_title_input).
+    pub renaming: Option<(String, String)>,
 }
 
 /// Scroll position: either a specific line index, or "at bottom" (follow new content).
@@ -61,6 +88,8 @@ pub struct App {
     pub current_model_id: String,
     /// When set, show model selector popup (Alt+M).
     pub model_selector: Option<ModelSelectorState>,
+    /// When set, show history selector popup (Alt+H).
+    pub history_selector: Option<HistorySelectorState>,
     /// Content width from last draw; used to compute scroll-to-start when adding new messages.
     pub(crate) last_content_width: Option<usize>,
     /// Credit balance: (total_credits, total_usage). Fetched on startup, refreshed every 30 min.
@@ -71,6 +100,12 @@ pub struct App {
     pub(crate) credits_last_fetched_at: Option<Instant>,
     /// Mouse is over credits area; used for cursor style.
     pub(crate) hovering_credits: bool,
+    /// Current conversation ID; None = new unsaved conversation.
+    pub(crate) current_conversation_id: Option<String>,
+    /// True if content has changed since last save.
+    pub(crate) dirty: bool,
+    /// Esc was pressed; next key = Option+key (Mac terminals with "Use option as meta").
+    pub(crate) escape_pending: bool,
 }
 
 impl App {
@@ -85,11 +120,58 @@ impl App {
             model_name,
             current_model_id: model_id,
             model_selector: None,
+            history_selector: None,
             last_content_width: None,
             credit_data: None,
             credits_header_rect: None,
             credits_last_fetched_at: None,
             hovering_credits: false,
+            current_conversation_id: None,
+            dirty: false,
+            escape_pending: false,
+        }
+    }
+
+    pub(crate) fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub(crate) fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    pub(crate) fn clear_dirty(&mut self) {
+        self.dirty = false;
+    }
+
+    pub(crate) fn set_conversation_id(&mut self, id: Option<String>) {
+        self.current_conversation_id = id;
+    }
+
+    pub(crate) fn conversation_id(&self) -> Option<&str> {
+        self.current_conversation_id.as_deref()
+    }
+
+    /// Reset to a new empty conversation.
+    pub(crate) fn new_conversation(&mut self) {
+        self.messages.clear();
+        self.current_conversation_id = None;
+        self.dirty = false;
+        self.scroll = ScrollPosition::default();
+        self.last_max_scroll = 0;
+    }
+
+    /// Populate messages from API format (user/assistant only).
+    pub(crate) fn set_messages_from_api(&mut self, api_messages: &[Value]) {
+        self.messages.clear();
+        for msg in api_messages {
+            let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+            let content = extract_content_value(msg).unwrap_or_default();
+            match role {
+                "user" => self.messages.push(ChatMessage::User(content)),
+                "assistant" => self.messages.push(ChatMessage::Assistant(content)),
+                _ => {}
+            }
         }
     }
 

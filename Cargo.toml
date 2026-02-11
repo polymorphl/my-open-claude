@@ -21,3 +21,5 @@ crossterm = "0.28"
 openrouter-rs = "0.4"
 opener = "0.7"
 directories = "5.0"
+uuid = { version = "1.11", features = ["v4"] }
+chrono = "0.4"
