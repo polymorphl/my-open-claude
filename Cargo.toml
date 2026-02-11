@@ -27,3 +27,6 @@ chrono = "0.4"
 regex = "1"
 walkdir = "2"
 globset = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
