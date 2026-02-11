@@ -1,6 +1,7 @@
 //! TUI (Text User Interface) to interact with the Claude assistant in chat mode.
 
 mod app;
+mod chat_result;
 mod constants;
 mod draw;
 mod handlers;
@@ -23,7 +24,6 @@ use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
 use crate::core::credits;
-use crate::core::history::{self, first_message_preview};
 use crate::core::llm;
 use crate::core::models::{self};
 
@@ -158,7 +158,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
             if let Ok(result) = chat.result_rx.try_recv() {
                 app.set_thinking(false);
                 app.is_streaming = false;
-                handle_chat_result(&mut app, &mut api_messages, result, true, config.as_ref());
+                chat_result::handle_chat_result(&mut app, &mut api_messages, result, true, config.as_ref());
                 pending_chat = None;
             }
         }
@@ -181,7 +181,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                         &rt,
                     );
                     if result == HandleResult::Break {
-                        save_conversation_if_dirty(&mut app, &api_messages, config.as_ref());
+                        chat_result::save_conversation_if_dirty(&mut app, &api_messages, config.as_ref());
                         break;
                     }
                 }
@@ -194,78 +194,3 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     Ok(())
 }
 
-fn save_conversation_if_dirty(
-    app: &mut App,
-    api_messages: &Option<Vec<Value>>,
-    config: &Config,
-) {
-    if !app.is_dirty() {
-        return;
-    }
-    let Some(msgs) = api_messages else { return };
-    if msgs.is_empty() {
-        return;
-    }
-    let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-    if let Ok(id) = history::save_conversation(
-        app.conversation_id(),
-        &title,
-        msgs,
-        config,
-    ) {
-        app.set_conversation_id(Some(id));
-        app.clear_dirty();
-    }
-}
-
-fn handle_chat_result(
-    app: &mut App,
-    api_messages: &mut Option<Vec<Value>>,
-    result: Result<llm::ChatResult, llm::ChatError>,
-    tool_log_already_streamed: bool,
-    config: &Config,
-) {
-    match result {
-        Ok(llm::ChatResult::Complete {
-            content,
-            tool_log,
-            messages,
-            usage,
-        }) => {
-            *api_messages = Some(messages);
-            let msgs = api_messages.as_ref().unwrap();
-            app.token_usage = Some(usage);
-            if tool_log_already_streamed {
-                app.clear_progress_after_last_user();
-            } else {
-                for line in tool_log {
-                    app.push_tool_log(line);
-                }
-            }
-            app.replace_or_push_assistant(content);
-            app.scroll = app::ScrollPosition::Bottom;
-            let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-            if let Ok(id) = history::save_conversation(
-                app.conversation_id(),
-                &title,
-                msgs,
-                config,
-            ) {
-                app.set_conversation_id(Some(id));
-                app.clear_dirty();
-            }
-        }
-        Ok(llm::ChatResult::NeedsConfirmation { command, state }) => {
-            app.confirm_popup = Some(app::ConfirmPopup { command, state });
-        }
-        Err(llm::ChatError::Cancelled) => {
-            // Keep whatever partial content was already streamed to the UI.
-            // Append a subtle cancellation notice.
-            app.append_cancelled_notice();
-        }
-        Err(ref e) => {
-            app.replace_or_push_assistant(format!("Error: {}", e));
-            app.scroll = app::ScrollPosition::Bottom;
-        }
-    }
-}
