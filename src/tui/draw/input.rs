@@ -9,7 +9,7 @@ use std::env;
 
 use super::super::app::App;
 use super::super::constants::{ACCENT, SUGGESTIONS};
-use super::welcome_raccoon;
+use super::welcome_mascot;
 
 /// Width of the centered input when in welcome (no conversation) mode.
 const WELCOME_INPUT_WIDTH: u16 = 64;
@@ -26,11 +26,11 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(area);
 
-    let raccoon_area = inner_chunks[0];
+    let mascot_area = inner_chunks[0];
     let input_area_outer = inner_chunks[2];
     let suggestions_area = inner_chunks[3];
 
-    welcome_raccoon::draw_raccoon(f, raccoon_area);
+    welcome_mascot::draw_mascot(f, mascot_area);
 
     let input_width = WELCOME_INPUT_WIDTH.min(area.width);
     let input_area = Rect {
