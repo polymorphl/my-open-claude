@@ -1,17 +1,14 @@
 //! Handler for confirm popup (y/n for destructive command).
 
 use crossterm::event::KeyCode;
-use std::sync::mpsc;
 use std::sync::Arc;
-use tokio_util::sync::CancellationToken;
 
 use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
-use crate::core::llm;
-use crate::core::models;
 
 use super::super::app::{App, ConfirmPopup, ScrollPosition};
+use super::chat_spawn;
 use super::PendingChat;
 
 /// Result of handling a key in the confirm popup.
@@ -41,40 +38,15 @@ pub(crate) fn handle_confirm_popup(
         if pending_chat_is_none {
             app.push_assistant(String::new());
             app.scroll = ScrollPosition::Bottom;
-            let (progress_tx, progress_rx) = mpsc::channel();
-            let (stream_tx, stream_rx) = mpsc::channel();
-            let (result_tx, result_rx) = mpsc::channel();
-            let cancel_token = CancellationToken::new();
-            let cancel_token_clone = cancel_token.clone();
-            let config = Arc::clone(config);
             let model_id = app.current_model_id.clone();
-            let context_length = models::resolve_context_length(&model_id);
-            let rt_clone = Arc::clone(rt);
-            std::thread::spawn(move || {
-                let on_progress: llm::OnProgress = Box::new(move |s| {
-                    let _ = progress_tx.send(s.to_string());
-                });
-                let on_content_chunk: llm::OnContentChunk = Box::new(move |s| {
-                    let _ = stream_tx.send(s.to_string());
-                });
-                let result = rt_clone.block_on(llm::chat_resume(
-                    config.as_ref(),
-                    &model_id,
-                    context_length,
-                    popup.state,
-                    confirmed,
-                    Some(on_progress),
-                    Some(on_content_chunk),
-                    Some(cancel_token_clone),
-                ));
-                let _ = result_tx.send(result.map_err(|e| e.to_string()));
-            });
-            ConfirmPopupResult::Spawned(PendingChat {
-                progress_rx,
-                stream_rx,
-                result_rx,
-                cancel_token,
-            })
+            let pc = chat_spawn::spawn_chat_resume(
+                rt,
+                Arc::clone(config),
+                model_id,
+                popup.state,
+                confirmed,
+            );
+            ConfirmPopupResult::Spawned(pc)
         } else {
             // Can't process yet; put popup back
             ConfirmPopupResult::PutBack(popup)

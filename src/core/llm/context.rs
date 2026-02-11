@@ -53,7 +53,7 @@ pub fn truncate_if_needed(messages: &mut Vec<Value>, context_length: u64) {
 /// Summarize Write/Edit tool call arguments in an assistant message to reduce context size.
 ///
 /// For Write tool calls: replace the `content` argument with `"[N bytes written]"`.
-/// For Edit tool calls: replace `new_str` argument with `"[N bytes]"`.
+/// For Edit tool calls: replace `new_string` and `old_string` arguments with `"[N bytes]"`.
 ///
 /// Call this on the last assistant message right after appending it to `messages`.
 pub fn summarize_write_args_in_last(messages: &mut Vec<Value>) {
@@ -94,13 +94,13 @@ pub fn summarize_write_args_in_last(messages: &mut Vec<Value>) {
                 args_val["content"] = json!(format!("[{} bytes written]", len));
             }
         } else if name == EDIT_TOOL {
-            if let Some(new_str) = args_val.get("new_str").and_then(|c| c.as_str()) {
+            if let Some(new_str) = args_val.get("new_string").and_then(|c| c.as_str()) {
                 let len = new_str.len();
-                args_val["new_str"] = json!(format!("[{} bytes]", len));
+                args_val["new_string"] = json!(format!("[{} bytes]", len));
             }
-            if let Some(old_str) = args_val.get("old_str").and_then(|c| c.as_str()) {
+            if let Some(old_str) = args_val.get("old_string").and_then(|c| c.as_str()) {
                 let len = old_str.len();
-                args_val["old_str"] = json!(format!("[{} bytes]", len));
+                args_val["old_string"] = json!(format!("[{} bytes]", len));
             }
         }
 

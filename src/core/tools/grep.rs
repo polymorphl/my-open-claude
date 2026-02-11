@@ -6,26 +6,22 @@ use serde_json::{Value, json};
 use std::fs;
 use walkdir::WalkDir;
 
-use super::{ignore, str_arg, tool_definition};
+use super::{ignore, str_arg, tool_definition, default_search_path, GREP_DEFAULT_MAX_RESULTS};
 
 #[derive(Debug, Deserialize)]
 struct GrepArgs {
     pattern: String,
-    #[serde(default = "default_path")]
+    #[serde(default = "default_search_path")]
     path: String,
     include: Option<String>,
     #[serde(default)]
     context_lines: usize,
-    #[serde(default = "default_max_results")]
+    #[serde(default = "default_grep_max_results")]
     max_results: usize,
 }
 
-fn default_path() -> String {
-    ".".to_string()
-}
-
-fn default_max_results() -> usize {
-    50
+fn default_grep_max_results() -> usize {
+    GREP_DEFAULT_MAX_RESULTS
 }
 
 pub struct GrepTool;
