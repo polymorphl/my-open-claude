@@ -63,24 +63,26 @@ pub struct ChatOptions {
     pub cancel_token: Option<CancellationToken>,
 }
 
+/// Parameters for starting a new chat.
+pub struct ChatRequest<'a> {
+    pub config: &'a Config,
+    pub model: &'a str,
+    pub prompt: &'a str,
+    pub mode: &'a str,
+    pub context_length: u64,
+    pub confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
+    pub previous_messages: Option<Vec<Value>>,
+    pub options: ChatOptions,
+}
+
 /// Run an agent loop that:
 /// - starts with the user's prompt (and optional previous conversation)
 /// - repeatedly calls the model
 /// - executes any requested tools (except Write/Bash in Ask mode)
 /// - feeds tool results back to the model
 /// - stops when the model responds without tool calls
-pub async fn chat(
-    config: &Config,
-    model: &str,
-    prompt: &str,
-    mode: &str,
-    context_length: u64,
-    confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
-    previous_messages: Option<Vec<Value>>,
-    options: impl Into<ChatOptions>,
-) -> Result<ChatResult, ChatError> {
-    let opts = options.into();
-    let client = Client::with_config(config.openai_config.clone());
+pub async fn chat(req: ChatRequest<'_>) -> Result<ChatResult, ChatError> {
+    let client = Client::with_config(req.config.openai_config.clone());
 
     let cwd = std::env::current_dir()
         .map(|p| p.display().to_string())
@@ -90,7 +92,7 @@ pub async fn chat(
         "content": format!("Current working directory: {}", cwd)
     });
 
-    let mut messages: Vec<Value> = previous_messages.unwrap_or_default();
+    let mut messages: Vec<Value> = req.previous_messages.unwrap_or_default();
     if messages.is_empty()
         || messages
             .first()
@@ -101,26 +103,28 @@ pub async fn chat(
     }
     messages.push(json!({
         "role": "user",
-        "content": prompt,
+        "content": req.prompt,
     }));
     let mut messages = Arc::new(messages);
     let mut tool_log = Arc::new(Vec::<String>::new());
+    let confirm_destructive = req.confirm_destructive;
 
     agent_loop::run_agent_loop(
-        &client,
-        config,
-        model,
-        context_length,
-        tools::definitions(),
-        tools::all(),
-        &mut messages,
-        &mut tool_log,
-        mode,
+        agent_loop::AgentLoopParams {
+            client: &client,
+            model: req.model,
+            context_length: req.context_length,
+            tools_defs: tools::definitions(),
+            tools_list: tools::all(),
+            messages: &mut messages,
+            tool_log: &mut tool_log,
+            mode: req.mode,
+        },
         agent_loop::AgentLoopCallbacks {
             confirm_destructive: &confirm_destructive,
-            on_progress: opts.on_progress.as_deref(),
-            on_content_chunk: opts.on_content_chunk.as_deref(),
-            cancel_token: opts.cancel_token.as_ref(),
+            on_progress: req.options.on_progress.as_deref(),
+            on_content_chunk: req.options.on_content_chunk.as_deref(),
+            cancel_token: req.options.cancel_token.as_ref(),
         },
     )
     .await
@@ -160,15 +164,16 @@ pub async fn chat_resume(
     let tools_list = tools::all();
 
     agent_loop::run_agent_loop(
-        &client,
-        config,
-        model,
-        context_length,
-        &tools_defs,
-        tools_list,
-        &mut messages,
-        &mut tool_log,
-        &state.mode,
+        agent_loop::AgentLoopParams {
+            client: &client,
+            model,
+            context_length,
+            tools_defs: &tools_defs,
+            tools_list,
+            messages: &mut messages,
+            tool_log: &mut tool_log,
+            mode: &state.mode,
+        },
         agent_loop::AgentLoopCallbacks {
             confirm_destructive: &None,
             on_progress: opts.on_progress.as_deref(),

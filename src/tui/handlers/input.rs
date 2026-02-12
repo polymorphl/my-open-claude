@@ -50,8 +50,10 @@ pub(crate) fn handle_main_input(
 
         // Slash autocomplete: Up/Down/Tab navigate commands
         (KeyCode::Tab, KeyModifiers::SHIFT) if in_slash_mode && !commands.is_empty() => {
-            app.selected_command_index =
-                app.selected_command_index.saturating_sub(1).min(commands.len().saturating_sub(1));
+            app.selected_command_index = app
+                .selected_command_index
+                .saturating_sub(1)
+                .min(commands.len().saturating_sub(1));
             super::HandleResult::Continue
         }
         (KeyCode::Tab, _) if in_slash_mode && !commands.is_empty() => {
@@ -59,8 +61,10 @@ pub(crate) fn handle_main_input(
             super::HandleResult::Continue
         }
         (KeyCode::Up, _) if in_slash_mode && !commands.is_empty() => {
-            app.selected_command_index =
-                app.selected_command_index.saturating_sub(1).min(commands.len().saturating_sub(1));
+            app.selected_command_index = app
+                .selected_command_index
+                .saturating_sub(1)
+                .min(commands.len().saturating_sub(1));
             super::HandleResult::Continue
         }
         (KeyCode::Down, _) if in_slash_mode && !commands.is_empty() => {
@@ -176,9 +180,7 @@ pub(crate) fn handle_main_input(
             // Clamp selected_command_index when filter shrinks (user typed more chars)
             if app.input.starts_with('/') {
                 let new_commands = commands::filter_commands(slash_filter(app));
-                if !new_commands.is_empty()
-                    && app.selected_command_index >= new_commands.len()
-                {
+                if !new_commands.is_empty() && app.selected_command_index >= new_commands.len() {
                     app.selected_command_index = new_commands.len().saturating_sub(1);
                 }
             }

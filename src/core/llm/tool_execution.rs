@@ -81,10 +81,7 @@ fn execute_bash_tool(
     args: &Value,
     id: &str,
     mode: &str,
-    confirm_destructive: &Option<ConfirmDestructive>,
-    tools_defs: &[Value],
-    messages: &std::sync::Arc<Vec<Value>>,
-    tool_log: &std::sync::Arc<Vec<String>>,
+    ctx: &ToolCallContext<'_>,
 ) -> BashOutcome {
     let command = match args.get("command").and_then(|v| v.as_str()) {
         Some(c) => c,
@@ -95,7 +92,7 @@ fn execute_bash_tool(
         return BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME));
     }
 
-    if let Some(cb) = confirm_destructive {
+    if let Some(cb) = ctx.confirm_destructive {
         return if cb(command) {
             BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME))
         } else {
@@ -106,11 +103,11 @@ fn execute_bash_tool(
     }
 
     BashOutcome::NeedsConfirmation(ConfirmState {
-        messages: std::sync::Arc::clone(messages),
-        tool_log: std::sync::Arc::clone(tool_log),
+        messages: std::sync::Arc::clone(ctx.messages),
+        tool_log: std::sync::Arc::clone(ctx.tool_log),
         tool_call_id: id.to_string(),
         mode: mode.to_string(),
-        tools: tools_defs.to_vec(),
+        tools: ctx.tools_defs.to_vec(),
         command: command.to_string(),
     })
 }
@@ -152,39 +149,29 @@ pub(super) fn execute_tool_call(
         progress(&log_line);
     }
 
-    let result = if is_ask_mode(mode)
-        && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME)
-    {
-        ASK_MODE_DISABLED.to_string()
-    } else {
-        match tools_list.iter().find(|t| t.name() == name) {
-            Some(tool) => {
-                if name == BASH_NAME {
-                    match execute_bash_tool(
-                        tool.as_ref(),
-                        &args,
-                        &id,
-                        mode,
-                        ctx.confirm_destructive,
-                        ctx.tools_defs,
-                        ctx.messages,
-                        ctx.tool_log,
-                    ) {
-                        BashOutcome::Output(s) => s,
-                        BashOutcome::NeedsConfirmation(state) => {
-                            return Ok(Some(ChatResult::NeedsConfirmation {
-                                command: state.command.clone(),
-                                state,
-                            }));
+    let result =
+        if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
+            ASK_MODE_DISABLED.to_string()
+        } else {
+            match tools_list.iter().find(|t| t.name() == name) {
+                Some(tool) => {
+                    if name == BASH_NAME {
+                        match execute_bash_tool(tool.as_ref(), &args, &id, mode, ctx) {
+                            BashOutcome::Output(s) => s,
+                            BashOutcome::NeedsConfirmation(state) => {
+                                return Ok(Some(ChatResult::NeedsConfirmation {
+                                    command: state.command.clone(),
+                                    state,
+                                }));
+                            }
                         }
+                    } else {
+                        tool_result_string(tool.execute(&args), name)
                     }
-                } else {
-                    tool_result_string(tool.execute(&args), name)
                 }
+                None => format!("Error: unknown tool '{}'", name),
             }
-            None => format!("Error: unknown tool '{}'", name),
-        }
-    };
+        };
 
     // Truncate large tool outputs to stay within context budget.
     let result = match output_limit_for(name) {
