@@ -27,16 +27,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(prompt) = args.prompt {
         let context_length = core::models::resolve_context_length(&config.model_id);
-        let result = core::llm::chat(
-            &config,
-            &config.model_id,
-            &prompt,
-            "Build",
+        let result = core::llm::chat(core::llm::ChatRequest {
+            config: &config,
+            model: &config.model_id,
+            prompt: &prompt,
+            mode: "Build",
             context_length,
-            Some(core::confirm::default_confirm()),
-            None,
-            core::llm::ChatOptions::default(),
-        )
+            confirm_destructive: Some(core::confirm::default_confirm()),
+            previous_messages: None,
+            options: core::llm::ChatOptions::default(),
+        })
         .await?;
         if let core::llm::ChatResult::Complete { content, .. } = result {
             println!("{}", content);

@@ -40,12 +40,18 @@ pub(super) fn ensure_data_dir() -> io::Result<std::path::PathBuf> {
 pub(super) fn load_index() -> io::Result<IndexFile> {
     let path = match index_path() {
         Some(p) => p,
-        None => return Ok(IndexFile { conversations: vec![] }),
+        None => {
+            return Ok(IndexFile {
+                conversations: vec![],
+            });
+        }
     };
     let data = match fs::read_to_string(&path) {
         Ok(d) => d,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Ok(IndexFile { conversations: vec![] });
+            return Ok(IndexFile {
+                conversations: vec![],
+            });
         }
         Err(e) => return Err(e),
     };

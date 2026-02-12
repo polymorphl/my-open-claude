@@ -41,16 +41,16 @@ pub fn spawn_chat(
     };
 
     std::thread::spawn(move || {
-        let result = rt_clone.block_on(llm::chat(
-            config.as_ref(),
-            &model_id,
-            &prompt,
-            &mode,
+        let result = rt_clone.block_on(llm::chat(llm::ChatRequest {
+            config: config.as_ref(),
+            model: &model_id,
+            prompt: &prompt,
+            mode: &mode,
             context_length,
-            None,
-            prev_messages,
+            confirm_destructive: None,
+            previous_messages: prev_messages,
             options,
-        ));
+        }));
         let _ = result_tx.send(result);
     });
 

@@ -55,7 +55,8 @@ pub(super) fn handle_chat_result(
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Bottom;
             let title = first_message_preview(&messages, constants::TITLE_PREVIEW_MAX_LEN);
-            if let Ok(id) = history::save_conversation(app.conversation_id(), &title, &messages, config)
+            if let Ok(id) =
+                history::save_conversation(app.conversation_id(), &title, &messages, config)
             {
                 app.set_conversation_id(Some(id));
                 app.clear_dirty();
