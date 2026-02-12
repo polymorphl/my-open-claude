@@ -5,6 +5,7 @@ mod confirm;
 mod history_selector;
 mod input;
 mod model_selector;
+mod shortcuts;
 
 use crossterm::event::{KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::layout::Position;
@@ -16,13 +17,15 @@ use serde_json::Value;
 use tokio::runtime::Runtime;
 
 use crate::core::config::Config;
-use crate::core::history::{self, first_message_preview};
+use crate::core::history::{self};
 use crate::core::llm;
 use crate::core::models::ModelInfo;
 
 use super::app::App;
 use super::constants;
 use super::shortcuts::Shortcut;
+
+use self::shortcuts::{ShortcutContext, handle_shortcut};
 
 const CREDITS_URL: &str = "https://openrouter.ai/settings/credits";
 
@@ -95,60 +98,6 @@ fn handle_history_selector(
             }
         }
         history_selector::HistorySelectorAction::Keep => {}
-    }
-    HandleResult::Continue
-}
-
-#[allow(clippy::too_many_arguments)]
-fn handle_shortcut(
-    shortcut: Shortcut,
-    _key: crossterm::event::KeyEvent,
-    app: &mut App,
-    config: &Arc<Config>,
-    api_messages: &mut Option<Vec<Value>>,
-    _pending_chat: &mut Option<PendingChat>,
-    pending_model_fetch: &mut Option<mpsc::Receiver<Result<Vec<ModelInfo>, String>>>,
-    rt: &Arc<Runtime>,
-) -> HandleResult {
-    match shortcut {
-        Shortcut::History => {
-            if app.is_dirty()
-                && let Some(msgs) = api_messages.as_ref()
-                && !msgs.is_empty()
-            {
-                let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-                if let Ok(id) =
-                    history::save_conversation(app.conversation_id(), &title, msgs, config.as_ref())
-                {
-                    app.set_conversation_id(Some(id));
-                    app.clear_dirty();
-                }
-            }
-            app.history_selector = Some(history_selector::open_history_selector());
-        }
-        Shortcut::NewConversation => {
-            if app.is_dirty()
-                && let Some(msgs) = api_messages.as_ref()
-                && !msgs.is_empty()
-            {
-                let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-                let _ = history::save_conversation(
-                    app.conversation_id(),
-                    &title,
-                    msgs,
-                    config.as_ref(),
-                );
-            }
-            app.new_conversation();
-            *api_messages = None;
-        }
-        Shortcut::ModelSelector => {
-            model_selector::open_model_selector(app, config, pending_model_fetch, rt);
-        }
-        Shortcut::Quit => {
-            return HandleResult::Break;
-        }
-        Shortcut::None => {}
     }
     HandleResult::Continue
 }
@@ -233,13 +182,13 @@ pub fn handle_key(
             app.escape_pending = false;
             return handle_shortcut(
                 shortcut,
-                key,
-                app,
-                config,
-                api_messages,
-                pending_chat,
-                pending_model_fetch,
-                rt,
+                ShortcutContext {
+                    app,
+                    config,
+                    api_messages,
+                    pending_model_fetch,
+                    rt,
+                },
             );
         }
         app.escape_pending = false;
@@ -258,13 +207,13 @@ pub fn handle_key(
         } else if shortcut != Shortcut::None {
             return handle_shortcut(
                 shortcut,
-                key,
-                app,
-                config,
-                api_messages,
-                pending_chat,
-                pending_model_fetch,
-                rt,
+                ShortcutContext {
+                    app,
+                    config,
+                    api_messages,
+                    pending_model_fetch,
+                    rt,
+                },
             );
         }
     }

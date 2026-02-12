@@ -78,6 +78,7 @@ pub async fn fetch_models_with_tools(
         .collect();
 
     model_infos.sort_by(|a, b| a.name.cmp(&b.name));
+    // Cache save failure is non-fatal: we still return the freshly fetched models.
     if let Err(e) = cache::save_models_to_cache(&model_infos) {
         eprintln!("Warning: failed to save models cache: {}", e);
     }

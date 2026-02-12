@@ -12,7 +12,7 @@ const EDIT_TOOL: &str = "Edit";
 /// Estimate the number of tokens in a single message.
 /// Uses JSON byte length / 4 as a rough chars-to-tokens ratio.
 fn estimate_message_tokens(msg: &Value) -> usize {
-    serde_json::to_vec(msg).map(|v| v.len()).unwrap_or(0) / 4
+    serde_json::to_vec(msg).map_or(0, |v| v.len()) / 4
 }
 
 /// Estimate the number of tokens in a set of messages.
