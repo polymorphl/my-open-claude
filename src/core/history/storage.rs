@@ -35,36 +35,22 @@ pub(super) fn ensure_data_dir() -> io::Result<std::path::PathBuf> {
     Ok(dir)
 }
 
-pub(super) fn load_index() -> IndexFile {
+/// Load the conversation index. Returns empty index when no data dir or file not found (first run).
+/// Propagates IO errors (permission, disk) and JSON parse errors.
+pub(super) fn load_index() -> io::Result<IndexFile> {
     let path = match index_path() {
         Some(p) => p,
-        None => {
-            return IndexFile {
-                conversations: vec![],
-            };
-        }
+        None => return Ok(IndexFile { conversations: vec![] }),
     };
     let data = match fs::read_to_string(&path) {
         Ok(d) => d,
-        Err(e) => {
-            eprintln!("Warning: could not read history index at {:?}: {}", path, e);
-            return IndexFile {
-                conversations: vec![],
-            };
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return Ok(IndexFile { conversations: vec![] });
         }
+        Err(e) => return Err(e),
     };
-    match serde_json::from_str(&data) {
-        Ok(index) => index,
-        Err(e) => {
-            eprintln!(
-                "Warning: invalid JSON in history index at {:?}: {}",
-                path, e
-            );
-            IndexFile {
-                conversations: vec![],
-            }
-        }
-    }
+    serde_json::from_str(&data)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
 pub(super) fn save_index(index: &IndexFile) -> io::Result<()> {

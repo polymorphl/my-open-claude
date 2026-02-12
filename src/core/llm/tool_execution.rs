@@ -55,17 +55,81 @@ pub fn is_ask_mode(mode: &str) -> bool {
     mode.eq_ignore_ascii_case("ask")
 }
 
+/// Run a tool and format errors. Logs the underlying error before returning user-facing string.
+pub(crate) fn tool_result_string(
+    res: Result<String, Box<dyn std::error::Error>>,
+    tool_name: &str,
+) -> String {
+    match res {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Tool {} error: {}", tool_name, e);
+            format!("Error: {}", e)
+        }
+    }
+}
+
+/// Outcome of executing the Bash tool: either output string or needs user confirmation.
+enum BashOutcome {
+    Output(String),
+    NeedsConfirmation(ConfirmState),
+}
+
+/// Execute Bash tool with destructive-command confirmation logic.
+fn execute_bash_tool(
+    tool: &dyn tools::Tool,
+    args: &Value,
+    id: &str,
+    mode: &str,
+    confirm_destructive: &Option<ConfirmDestructive>,
+    tools_defs: &[Value],
+    messages: &std::sync::Arc<Vec<Value>>,
+    tool_log: &std::sync::Arc<Vec<String>>,
+) -> BashOutcome {
+    let command = match args.get("command").and_then(|v| v.as_str()) {
+        Some(c) => c,
+        None => return BashOutcome::Output("Error: missing command argument".to_string()),
+    };
+
+    if !tools::is_destructive(command) {
+        return BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME));
+    }
+
+    if let Some(cb) = confirm_destructive {
+        return if cb(command) {
+            BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME))
+        } else {
+            BashOutcome::Output(
+                "Command cancelled (destructive command not confirmed).".to_string(),
+            )
+        };
+    }
+
+    BashOutcome::NeedsConfirmation(ConfirmState {
+        messages: std::sync::Arc::clone(messages),
+        tool_log: std::sync::Arc::clone(tool_log),
+        tool_call_id: id.to_string(),
+        mode: mode.to_string(),
+        tools: tools_defs.to_vec(),
+        command: command.to_string(),
+    })
+}
+
+/// Context for executing a tool call (shared state and callbacks).
+pub(super) struct ToolCallContext<'a> {
+    pub confirm_destructive: &'a Option<ConfirmDestructive>,
+    pub tools_defs: &'a [Value],
+    pub messages: &'a mut std::sync::Arc<Vec<Value>>,
+    pub tool_log: &'a mut std::sync::Arc<Vec<String>>,
+    pub on_progress: Option<&'a (dyn Fn(&str) + Send + Sync)>,
+}
+
 /// Execute a single tool call. Returns `Some(ChatResult::NeedsConfirmation)` if destructive and needs confirmation.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn execute_tool_call(
     tool_call: &Value,
     tools_list: &[Box<dyn tools::Tool>],
     mode: &str,
-    confirm_destructive: &Option<ConfirmDestructive>,
-    tools_defs: &[Value],
-    messages: &mut std::sync::Arc<Vec<Value>>,
-    tool_log: &mut std::sync::Arc<Vec<String>>,
-    on_progress: Option<&(dyn Fn(&str) + Send)>,
+    ctx: &mut ToolCallContext<'_>,
 ) -> Result<Option<ChatResult>, ChatError> {
     let id = tool_call["id"].as_str().unwrap_or_default().to_string();
     let function = &tool_call["function"];
@@ -83,57 +147,44 @@ pub(super) fn execute_tool_call(
         .map(|t| t.args_preview(&args))
         .unwrap_or_default();
     let log_line = format!("→ {}: {}", name, args_preview);
-    std::sync::Arc::make_mut(tool_log).push(log_line.clone());
-    if let Some(ref progress) = on_progress {
+    std::sync::Arc::make_mut(ctx.tool_log).push(log_line.clone());
+    if let Some(ref progress) = ctx.on_progress {
         progress(&log_line);
     }
 
-    let result =
-        if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
-            ASK_MODE_DISABLED.to_string()
-        } else {
-            match tools_list.iter().find(|t| t.name() == name) {
-                Some(tool) => {
-                    if name == BASH_NAME {
-                        if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
-                            if tools::is_destructive(command) {
-                                if let Some(cb) = confirm_destructive {
-                                    let confirmed = cb(command);
-                                    if !confirmed {
-                                        "Command cancelled (destructive command not confirmed)."
-                                            .to_string()
-                                    } else {
-                                        tool.execute(&args)
-                                            .unwrap_or_else(|e| format!("Error: {}", e))
-                                    }
-                                } else {
-                                    return Ok(Some(ChatResult::NeedsConfirmation {
-                                        command: command.to_string(),
-                                        state: ConfirmState {
-                                            messages: std::sync::Arc::clone(messages),
-                                            tool_log: std::sync::Arc::clone(tool_log),
-                                            tool_call_id: id.clone(),
-                                            mode: mode.to_string(),
-                                            tools: tools_defs.to_vec(),
-                                            command: command.to_string(),
-                                        },
-                                    }));
-                                }
-                            } else {
-                                tool.execute(&args)
-                                    .unwrap_or_else(|e| format!("Error: {}", e))
-                            }
-                        } else {
-                            "Error: missing command argument".to_string()
+    let result = if is_ask_mode(mode)
+        && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME)
+    {
+        ASK_MODE_DISABLED.to_string()
+    } else {
+        match tools_list.iter().find(|t| t.name() == name) {
+            Some(tool) => {
+                if name == BASH_NAME {
+                    match execute_bash_tool(
+                        tool.as_ref(),
+                        &args,
+                        &id,
+                        mode,
+                        ctx.confirm_destructive,
+                        ctx.tools_defs,
+                        ctx.messages,
+                        ctx.tool_log,
+                    ) {
+                        BashOutcome::Output(s) => s,
+                        BashOutcome::NeedsConfirmation(state) => {
+                            return Ok(Some(ChatResult::NeedsConfirmation {
+                                command: state.command.clone(),
+                                state,
+                            }));
                         }
-                    } else {
-                        tool.execute(&args)
-                            .unwrap_or_else(|e| format!("Error: {}", e))
                     }
+                } else {
+                    tool_result_string(tool.execute(&args), name)
                 }
-                None => format!("Error: unknown tool '{}'", name),
             }
-        };
+            None => format!("Error: unknown tool '{}'", name),
+        }
+    };
 
     // Truncate large tool outputs to stay within context budget.
     let result = match output_limit_for(name) {
@@ -141,7 +192,7 @@ pub(super) fn execute_tool_call(
         None => result,
     };
 
-    std::sync::Arc::make_mut(messages).push(json!({
+    std::sync::Arc::make_mut(ctx.messages).push(json!({
         "role": "tool",
         "tool_call_id": id,
         "content": result,

@@ -98,7 +98,7 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
     } else {
         super::super::constants::LOGO_IDLE
     };
-    let count = history::list_conversations().len();
+    let count = history::list_conversations().unwrap_or_default().len();
     let logo_line = Line::from(vec![
         Span::styled(format!("{} ", logo_symbol), Style::default().fg(accent)),
         Span::styled(format!("{} ", count), Style::default().fg(Color::DarkGray)),
