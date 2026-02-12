@@ -25,6 +25,7 @@ directories = "5.0"
 uuid = { version = "1.11", features = ["v4"] }
 chrono = "0.4"
 regex = "1"
+textwrap = "0.16"
 walkdir = "2"
 globset = "0.4"
 

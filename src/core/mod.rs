@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod config;
 pub mod confirm;
 pub mod credits;

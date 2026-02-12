@@ -268,12 +268,17 @@ pub fn handle_key(
         }
     }
 
-    // Esc: cancel in-flight request if one is pending, otherwise start Option+key sequence.
+    // Esc: in slash mode, clear input; else cancel in-flight or start Option+key sequence.
     if Shortcut::is_escape(&key)
         && app.confirm_popup.is_none()
         && app.model_selector.is_none()
         && app.history_selector.is_none()
     {
+        if app.input.starts_with('/') {
+            app.input.clear();
+            app.selected_command_index = 0;
+            return HandleResult::Continue;
+        }
         if let Some(pc) = pending_chat.as_ref() {
             pc.cancel_token.cancel();
             return HandleResult::Continue;
