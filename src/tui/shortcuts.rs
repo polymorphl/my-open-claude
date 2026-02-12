@@ -5,6 +5,7 @@
 //! | Action        | Keys                                    |
 //! |---------------|-----------------------------------------|
 //! | Send          | Enter                                    |
+//! | Newline       | Shift+Enter                              |
 //! | Scroll        | ↑ ↓ PageUp PageDown                     |
 //! | History       | Alt+H, Esc+h (Option as meta), Mac chars |
 //! | New conv      | Alt+N, Esc+n, Mac chars                  |
@@ -110,6 +111,8 @@ pub mod labels {
             Line::from(vec![
                 Span::styled("Enter ", DIM),
                 Span::raw("send"),
+                Span::styled("  Shift+Enter ", DIM),
+                Span::raw("newline"),
                 Span::styled("  ↑↓ ", DIM),
                 Span::raw("scroll"),
                 Span::styled("  Alt+H ", DIM),

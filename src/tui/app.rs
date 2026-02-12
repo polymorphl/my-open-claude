@@ -66,6 +66,10 @@ pub struct App {
     pub(crate) last_max_scroll: usize,
     /// Index of the selected suggestion (Tab to cycle).
     pub selected_suggestion: usize,
+    /// Index of the selected slash command in the autocomplete list (when input starts with /).
+    pub selected_command_index: usize,
+    /// Mode to use when sending; set when user selects a slash command and inserts its template.
+    pub(crate) pending_command_mode: Option<String>,
     /// When set, show confirmation popup and ignore normal input until y/n.
     pub confirm_popup: Option<ConfirmPopup>,
     /// Model ID displayed in the header and used for chat (e.g. "anthropic/claude-haiku-4.5").
@@ -109,6 +113,8 @@ impl App {
             scroll: ScrollPosition::default(),
             last_max_scroll: 0,
             selected_suggestion: 0,
+            selected_command_index: 0,
+            pending_command_mode: None,
             confirm_popup: None,
             model_name,
             current_model_id: model_id,
