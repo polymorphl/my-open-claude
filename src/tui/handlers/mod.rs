@@ -32,7 +32,9 @@ fn handle_model_selector(
     app: &mut App,
     pending_model_fetch: &mut Option<mpsc::Receiver<Result<Vec<ModelInfo>, String>>>,
 ) -> HandleResult {
-    let selector = app.model_selector.as_mut().expect("model_selector is Some");
+    let Some(selector) = app.model_selector.as_mut() else {
+        return HandleResult::Continue;
+    };
     let action = model_selector::handle_model_selector_key(key_code, modifiers, selector);
     match action {
         model_selector::ModelSelectorAction::Close => {
@@ -59,10 +61,9 @@ fn handle_history_selector(
     app: &mut App,
     api_messages: &mut Option<Vec<Value>>,
 ) -> HandleResult {
-    let selector = app
-        .history_selector
-        .as_mut()
-        .expect("history_selector is Some");
+    let Some(selector) = app.history_selector.as_mut() else {
+        return HandleResult::Continue;
+    };
     let action = history_selector::handle_history_selector_key(key_code, modifiers, selector);
     match action {
         history_selector::HistorySelectorAction::Close => {

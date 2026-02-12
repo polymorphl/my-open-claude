@@ -38,7 +38,7 @@ pub static SLASH_COMMANDS: &[SlashCommand] = &[
     },
     SlashCommand {
         name: "explain",
-        description: "Explain simply",
+        description: "Explain code or concepts simply (ELI5 style)",
         prompt_prefix: "Explain in simple terms, avoiding jargon. Break down complex parts step by step. Target: ",
         mode: "Ask",
     },

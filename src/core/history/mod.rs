@@ -70,12 +70,12 @@ pub fn filter_conversations<'a>(
 }
 
 /// List all conversations, sorted by updated_at descending.
-pub fn list_conversations() -> Vec<ConversationMeta> {
-    let mut index = storage::load_index();
+pub fn list_conversations() -> io::Result<Vec<ConversationMeta>> {
+    let mut index = storage::load_index()?;
     index
         .conversations
         .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    index.conversations
+    Ok(index.conversations)
 }
 
 /// Load a conversation by ID. Returns the messages in API format.
@@ -113,7 +113,7 @@ pub fn save_conversation(
 
     storage::write_conv_file(&conv_id, &sanitized)?;
 
-    let mut index = storage::load_index();
+    let mut index = storage::load_index()?;
     let created_at = id
         .and_then(|existing_id| {
             index
@@ -148,7 +148,7 @@ pub fn rename_conversation(id: &str, new_title: &str) -> io::Result<()> {
             "Title cannot be empty",
         ));
     }
-    let mut index = storage::load_index();
+    let mut index = storage::load_index()?;
     if let Some(meta) = index.conversations.iter_mut().find(|c| c.id == id) {
         meta.title = new_title.to_string();
         storage::save_index(&index)?;
@@ -159,7 +159,7 @@ pub fn rename_conversation(id: &str, new_title: &str) -> io::Result<()> {
 /// Delete a conversation by ID. Removes the file and index entry.
 pub fn delete_conversation(id: &str) -> io::Result<()> {
     storage::remove_conv_file(id);
-    let mut index = storage::load_index();
+    let mut index = storage::load_index()?;
     index.conversations.retain(|c| c.id != id);
     storage::save_index(&index)?;
     Ok(())
@@ -172,7 +172,7 @@ pub fn prune_if_needed(config: &Config) -> io::Result<()> {
         return Ok(());
     }
 
-    let mut index = storage::load_index();
+    let mut index = storage::load_index()?;
     index
         .conversations
         .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));

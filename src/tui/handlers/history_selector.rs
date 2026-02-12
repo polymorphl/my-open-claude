@@ -131,7 +131,8 @@ pub(crate) fn handle_history_selector_key(
 
 /// Open the history selector. Caller must save current conversation first if dirty.
 pub(crate) fn open_history_selector() -> HistorySelectorState {
-    let conversations = crate::core::history::list_conversations();
+    let conversations = crate::core::history::list_conversations()
+        .unwrap_or_else(|_| vec![]);
     HistorySelectorState {
         conversations,
         selected_index: 0,

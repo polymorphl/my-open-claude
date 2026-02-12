@@ -35,9 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             context_length,
             Some(core::confirm::default_confirm()),
             None,
-            None, // No progress callback in CLI mode
-            None, // No content chunk callback in CLI mode
-            None, // No cancellation in CLI mode
+            core::llm::ChatOptions::default(),
         )
         .await?;
         if let core::llm::ChatResult::Complete { content, .. } = result {

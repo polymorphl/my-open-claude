@@ -30,8 +30,15 @@ fn make_complete(
     }
 }
 
+/// Callbacks and options for the agent loop (confirmation, progress, streaming, cancellation).
+pub(super) struct AgentLoopCallbacks<'a> {
+    pub confirm_destructive: &'a Option<ConfirmDestructive>,
+    pub on_progress: Option<&'a (dyn Fn(&str) + Send + Sync)>,
+    pub on_content_chunk: Option<&'a (dyn Fn(&str) + Send + Sync)>,
+    pub cancel_token: Option<&'a CancellationToken>,
+}
+
 /// Run the agent loop: call API, stream response, execute tools, repeat.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_agent_loop(
     client: &Client<OpenAIConfig>,
     _config: &Config,
@@ -42,11 +49,9 @@ pub(super) async fn run_agent_loop(
     messages: &mut Arc<Vec<Value>>,
     tool_log: &mut Arc<Vec<String>>,
     mode: &str,
-    confirm_destructive: &Option<ConfirmDestructive>,
-    on_progress: Option<&(dyn Fn(&str) + Send)>,
-    on_content_chunk: Option<&(dyn Fn(&str) + Send)>,
-    cancel_token: Option<&CancellationToken>,
+    callbacks: AgentLoopCallbacks<'_>,
 ) -> Result<ChatResult, ChatError> {
+    let cancel_token = callbacks.cancel_token;
     let mut last_usage = TokenUsage::default();
 
     loop {
@@ -58,7 +63,7 @@ pub(super) async fn run_agent_loop(
         // Truncate context if it exceeds the model's window.
         context::truncate_if_needed(Arc::make_mut(messages), context_length);
 
-        if let Some(ref progress) = on_progress {
+        if let Some(ref progress) = callbacks.on_progress {
             progress("Calling API...");
         }
 
@@ -129,7 +134,7 @@ pub(super) async fn run_agent_loop(
             if let Some(content) = delta["content"].as_str() {
                 if !content.is_empty() && full_content.len() + content.len() <= MAX_CONTENT_BYTES {
                     full_content.push_str(content);
-                    if let Some(ref cb) = on_content_chunk {
+                    if let Some(ref cb) = callbacks.on_content_chunk {
                         cb(content);
                     }
                 } else if full_content.len() >= MAX_CONTENT_BYTES {
@@ -205,16 +210,16 @@ pub(super) async fn run_agent_loop(
                 return Err(ChatError::Cancelled);
             }
 
-            if let Some(needs_confirmation) = tool_execution::execute_tool_call(
-                tool_call,
-                tools_list,
-                mode,
-                confirm_destructive,
+            let mut tool_ctx = tool_execution::ToolCallContext {
+                confirm_destructive: callbacks.confirm_destructive,
                 tools_defs,
                 messages,
                 tool_log,
-                on_progress,
-            )? {
+                on_progress: callbacks.on_progress,
+            };
+            if let Some(needs_confirmation) =
+                tool_execution::execute_tool_call(tool_call, tools_list, mode, &mut tool_ctx)?
+            {
                 return Ok(needs_confirmation);
             }
         }

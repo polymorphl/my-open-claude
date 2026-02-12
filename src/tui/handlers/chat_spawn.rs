@@ -30,13 +30,17 @@ pub fn spawn_chat(
     let context_length = crate::core::models::resolve_context_length(&model_id);
     let rt_clone = Arc::clone(rt);
 
-    std::thread::spawn(move || {
-        let on_progress: llm::OnProgress = Box::new(move |s| {
+    let options = llm::ChatOptions {
+        on_progress: Some(Box::new(move |s| {
             let _ = progress_tx.send(s.to_string());
-        });
-        let on_content_chunk: llm::OnContentChunk = Box::new(move |s| {
+        })),
+        on_content_chunk: Some(Box::new(move |s| {
             let _ = stream_tx.send(s.to_string());
-        });
+        })),
+        cancel_token: Some(cancel_token_clone),
+    };
+
+    std::thread::spawn(move || {
         let result = rt_clone.block_on(llm::chat(
             config.as_ref(),
             &model_id,
@@ -45,9 +49,7 @@ pub fn spawn_chat(
             context_length,
             None,
             prev_messages,
-            Some(on_progress),
-            Some(on_content_chunk),
-            Some(cancel_token_clone),
+            options,
         ));
         let _ = result_tx.send(result);
     });
@@ -77,22 +79,24 @@ pub fn spawn_chat_resume(
     let context_length = crate::core::models::resolve_context_length(&model_id);
     let rt_clone = Arc::clone(rt);
 
-    std::thread::spawn(move || {
-        let on_progress: llm::OnProgress = Box::new(move |s| {
+    let options = llm::ChatOptions {
+        on_progress: Some(Box::new(move |s| {
             let _ = progress_tx.send(s.to_string());
-        });
-        let on_content_chunk: llm::OnContentChunk = Box::new(move |s| {
+        })),
+        on_content_chunk: Some(Box::new(move |s| {
             let _ = stream_tx.send(s.to_string());
-        });
+        })),
+        cancel_token: Some(cancel_token_clone),
+    };
+
+    std::thread::spawn(move || {
         let result = rt_clone.block_on(llm::chat_resume(
             config.as_ref(),
             &model_id,
             context_length,
             state,
             confirmed,
-            Some(on_progress),
-            Some(on_content_chunk),
-            Some(cancel_token_clone),
+            options,
         ));
         let _ = result_tx.send(result);
     });

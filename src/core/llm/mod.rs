@@ -48,10 +48,20 @@ pub struct ConfirmState {
 }
 
 /// Callback for progress updates during chat (e.g. "Calling API...", "→ Bash: ls").
-pub type OnProgress = Box<dyn Fn(&str) + Send>;
+/// Sync required so futures holding &OnProgress across await points are Send.
+pub type OnProgress = Box<dyn Fn(&str) + Send + Sync>;
 
 /// Callback for each streamed content chunk (text only).
-pub type OnContentChunk = Box<dyn Fn(&str) + Send>;
+/// Sync required so futures holding &OnContentChunk across await points are Send.
+pub type OnContentChunk = Box<dyn Fn(&str) + Send + Sync>;
+
+/// Optional callbacks for chat: progress, streaming, cancellation.
+#[derive(Default)]
+pub struct ChatOptions {
+    pub on_progress: Option<OnProgress>,
+    pub on_content_chunk: Option<OnContentChunk>,
+    pub cancel_token: Option<CancellationToken>,
+}
 
 /// Run an agent loop that:
 /// - starts with the user's prompt (and optional previous conversation)
@@ -59,7 +69,6 @@ pub type OnContentChunk = Box<dyn Fn(&str) + Send>;
 /// - executes any requested tools (except Write/Bash in Ask mode)
 /// - feeds tool results back to the model
 /// - stops when the model responds without tool calls
-#[allow(clippy::too_many_arguments)]
 pub async fn chat(
     config: &Config,
     model: &str,
@@ -68,10 +77,9 @@ pub async fn chat(
     context_length: u64,
     confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
     previous_messages: Option<Vec<Value>>,
-    on_progress: Option<OnProgress>,
-    on_content_chunk: Option<OnContentChunk>,
-    cancel_token: Option<CancellationToken>,
+    options: impl Into<ChatOptions>,
 ) -> Result<ChatResult, ChatError> {
+    let opts = options.into();
     let client = Client::with_config(config.openai_config.clone());
 
     let cwd = std::env::current_dir()
@@ -108,33 +116,34 @@ pub async fn chat(
         &mut messages,
         &mut tool_log,
         mode,
-        &confirm_destructive,
-        on_progress.as_deref(),
-        on_content_chunk.as_deref(),
-        cancel_token.as_ref(),
+        agent_loop::AgentLoopCallbacks {
+            confirm_destructive: &confirm_destructive,
+            on_progress: opts.on_progress.as_deref(),
+            on_content_chunk: opts.on_content_chunk.as_deref(),
+            cancel_token: opts.cancel_token.as_ref(),
+        },
     )
     .await
 }
 
 /// Resume the chat loop after user confirmed or cancelled a destructive command.
-#[allow(clippy::too_many_arguments)]
 pub async fn chat_resume(
     config: &Config,
     model: &str,
     context_length: u64,
     state: ConfirmState,
     confirmed: bool,
-    on_progress: Option<OnProgress>,
-    on_content_chunk: Option<OnContentChunk>,
-    cancel_token: Option<CancellationToken>,
+    options: impl Into<ChatOptions>,
 ) -> Result<ChatResult, ChatError> {
+    let opts = options.into();
     let client = Client::with_config(config.openai_config.clone());
 
     let bash_tool = tools::BashTool;
     let result = if confirmed {
-        bash_tool
-            .execute(&json!({ "command": state.command }))
-            .unwrap_or_else(|e| format!("Error: {}", e))
+        tool_execution::tool_result_string(
+            bash_tool.execute(&json!({ "command": state.command })),
+            "Bash",
+        )
     } else {
         "Command cancelled (destructive command not confirmed).".to_string()
     };
@@ -160,10 +169,12 @@ pub async fn chat_resume(
         &mut messages,
         &mut tool_log,
         &state.mode,
-        &None,
-        on_progress.as_deref(),
-        on_content_chunk.as_deref(),
-        cancel_token.as_ref(),
+        agent_loop::AgentLoopCallbacks {
+            confirm_destructive: &None,
+            on_progress: opts.on_progress.as_deref(),
+            on_content_chunk: opts.on_content_chunk.as_deref(),
+            cancel_token: opts.cancel_token.as_ref(),
+        },
     )
     .await
 }

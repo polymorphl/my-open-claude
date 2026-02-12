@@ -3,7 +3,8 @@
 
 /// Callback type for confirming destructive Bash commands.
 /// Receives the command, returns true to run, false to cancel.
-pub type ConfirmDestructive = Box<dyn Fn(&str) -> bool + Send>;
+/// Sync required so futures holding &ConfirmDestructive across await points are Send.
+pub type ConfirmDestructive = Box<dyn Fn(&str) -> bool + Send + Sync>;
 
 /// Default implementation: prompt on stderr, read y/N from stdin.
 /// For CLI (prompt mode) where the terminal is already in cooked mode.
