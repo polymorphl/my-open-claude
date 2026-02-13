@@ -108,8 +108,12 @@ pub(crate) fn handle_main_input(
             super::HandleResult::Continue
         }
 
-        // Shift+Enter: insert newline in textarea
-        (KeyCode::Enter, KeyModifiers::SHIFT) => {
+        // Shift+Enter or Alt+Enter: insert newline in textarea
+        // Note: On macOS, Shift+Enter often reports modifiers::NONE (crossterm #669);
+        // Alt+Enter (Option+Enter) usually works as a fallback.
+        (KeyCode::Enter, mods)
+            if mods.contains(KeyModifiers::SHIFT) || mods.contains(KeyModifiers::ALT) =>
+        {
             app.input.push('\n');
             super::HandleResult::Continue
         }
@@ -145,6 +149,14 @@ pub(crate) fn handle_main_input(
             super::HandleResult::Continue
         }
 
+        // Ctrl+U: clear input (e.g. recover from pasted error)
+        (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+            app.input.clear();
+            app.selected_command_index = 0;
+            app.pending_command_mode = None;
+            super::HandleResult::Continue
+        }
+
         (KeyCode::Backspace, _) => {
             app.input.pop();
             if !app.input.starts_with('/') {
@@ -170,6 +182,15 @@ pub(crate) fn handle_main_input(
         }
         (KeyCode::PageDown, _) => {
             app.scroll_down(constants::SCROLL_LINES_PAGE);
+            super::HandleResult::Continue
+        }
+        (KeyCode::Home, _) => {
+            app.materialize_scroll();
+            app.scroll = ScrollPosition::Line(0);
+            super::HandleResult::Continue
+        }
+        (KeyCode::End, _) => {
+            app.scroll = ScrollPosition::Bottom;
             super::HandleResult::Continue
         }
         (KeyCode::Char(c), mods) => {

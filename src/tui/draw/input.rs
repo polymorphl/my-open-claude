@@ -244,7 +244,7 @@ fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
 pub(crate) fn draw_bottom_bar(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(100)])
+        .constraints([Constraint::Min(1), Constraint::Min(80)])
         .split(area);
     let path_area = chunks[0];
     let shortcuts_area = chunks[1];
@@ -291,13 +291,13 @@ pub(crate) fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Re
             Constraint::Length(ac_height),
             Constraint::Length(INPUT_LINES),
             Constraint::Length(1),
-            Constraint::Length(1),
+            Constraint::Length(2),
         ]
     } else {
         &[
             Constraint::Length(INPUT_LINES),
             Constraint::Length(1),
-            Constraint::Length(1),
+            Constraint::Length(2),
         ]
     };
 

@@ -21,10 +21,18 @@ use dotenv::dotenv;
 /// 1. Single prompt mode (with `-p`)
 /// 2. Interactive TUI mode (default)
 #[derive(Parser)]
-#[command(author, version, about = "An AI Assistant CLI powered by open-source models")]
+#[command(
+    author,
+    version,
+    about = "An AI Assistant CLI powered by open-source models"
+)]
 struct Args {
     /// Send a single prompt then exit (without opening the TUI)
-    #[arg(short = 'p', long, help = "Provide a prompt to get an immediate AI response")]
+    #[arg(
+        short = 'p',
+        long,
+        help = "Provide a prompt to get an immediate AI response"
+    )]
     prompt: Option<String>,
 }
 
