@@ -37,9 +37,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         let input_section_height = if app.input.starts_with('/')
             && !commands::filter_commands(app.input.get(1..).unwrap_or("")).is_empty()
         {
-            input::AUTOCOMPLETE_VISIBLE_LINES + super::constants::INPUT_LINES + 2
+            input::AUTOCOMPLETE_VISIBLE_LINES + super::constants::INPUT_LINES + 3
         } else {
-            super::constants::INPUT_LINES + 2
+            super::constants::INPUT_LINES + 3
         };
         let chunks = Layout::default()
             .direction(Direction::Vertical)

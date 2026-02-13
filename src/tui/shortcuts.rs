@@ -92,37 +92,43 @@ impl Shortcut {
     }
 }
 
-/// Labels for the bottom bar.
+/// Labels for the bottom bar (2 lines for readability on narrow terminals).
 pub mod labels {
     use ratatui::style::Color;
-    use ratatui::text::{Line, Span};
+    use ratatui::text::{Line, Span, Text};
 
     const DIM: Color = Color::DarkGray;
 
-    pub fn bottom_bar(is_streaming: bool) -> Line<'static> {
+    pub fn bottom_bar(is_streaming: bool) -> Text<'static> {
         if is_streaming {
-            Line::from(vec![
+            Text::from(Line::from(vec![
                 Span::styled("Esc ", Color::Yellow),
                 Span::raw("cancel"),
                 Span::styled("  ↑↓ ", DIM),
                 Span::raw("scroll"),
-            ])
+            ]))
         } else {
-            Line::from(vec![
-                Span::styled("Enter ", DIM),
-                Span::raw("send"),
-                Span::styled("  Shift+Enter ", DIM),
-                Span::raw("newline"),
-                Span::styled("  ↑↓ ", DIM),
-                Span::raw("scroll"),
-                Span::styled("  Alt+H ", DIM),
-                Span::raw("history"),
-                Span::styled("  Alt+N ", DIM),
-                Span::raw("new"),
-                Span::styled("  Alt+M ", DIM),
-                Span::raw("model"),
-                Span::styled("  Ctrl+C ", DIM),
-                Span::raw("quit"),
+            Text::from(vec![
+                Line::from(vec![
+                    Span::styled("Enter ", DIM),
+                    Span::raw("send"),
+                    Span::styled("  Shift/Alt+Enter ", DIM),
+                    Span::raw("newline"),
+                    Span::styled("  Ctrl+U ", DIM),
+                    Span::raw("clear"),
+                    Span::styled("  ↑↓ ", DIM),
+                    Span::raw("scroll"),
+                ]),
+                Line::from(vec![
+                    Span::styled("Alt+H ", DIM),
+                    Span::raw("history"),
+                    Span::styled("  Alt+N ", DIM),
+                    Span::raw("new"),
+                    Span::styled("  Alt+M ", DIM),
+                    Span::raw("model"),
+                    Span::styled("  Ctrl+C ", DIM),
+                    Span::raw("quit"),
+                ]),
             ])
         }
     }
