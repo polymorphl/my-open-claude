@@ -62,6 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load application configuration
     let config = core::config::load()?;
 
+    // Detect workspace (current directory, project type, AGENT.md)
+    let workspace = core::workspace::detect();
+
     // Handle single prompt mode
     if let Some(prompt) = args.prompt {
         let context_length = core::models::resolve_context_length(&config.model_id);
@@ -74,6 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             confirm_destructive: Some(core::confirm::default_confirm()),
             previous_messages: None,
             options: core::llm::ChatOptions::default(),
+            workspace: &workspace,
         })
         .await?;
 
@@ -89,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = std::sync::Arc::new(config);
     let config_clone = config.clone();
     let join_result: Result<std::io::Result<()>, tokio::task::JoinError> =
-        tokio::task::spawn_blocking(move || tui::run(config_clone)).await;
+        tokio::task::spawn_blocking(move || tui::run(config_clone, workspace)).await;
 
     // Handle potential TUI thread failures
     join_result.map_err(|_| {

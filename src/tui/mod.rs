@@ -25,6 +25,7 @@ use tokio::runtime::Runtime;
 use crate::core::config::Config;
 use crate::core::credits;
 use crate::core::models::{self};
+use crate::core::workspace::Workspace;
 
 use handlers::{HandleResult, PendingChat, set_cursor_shape};
 
@@ -69,7 +70,7 @@ impl Drop for TerminalGuard {
 }
 
 /// Run the TUI loop. Uses a dedicated Tokio runtime for async chat calls.
-pub fn run(config: Arc<Config>) -> io::Result<()> {
+pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
     use crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, enable_raw_mode};
     use ratatui::Terminal;
     use ratatui::backend::CrosstermBackend;
@@ -88,7 +89,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     );
 
     let model_name = models::resolve_model_display_name(&config.model_id);
-    let mut app = App::new(config.model_id.clone(), model_name);
+    let mut app = App::new(config.model_id.clone(), model_name, workspace);
     let mut api_messages: Option<Vec<Value>> = None;
     let mut pending_chat: Option<PendingChat> = None;
     let mut pending_model_fetch: Option<mpsc::Receiver<Result<Vec<models::ModelInfo>, String>>> =

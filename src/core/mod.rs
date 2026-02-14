@@ -10,3 +10,4 @@ pub mod paths;
 pub mod persistence;
 pub mod tools;
 pub mod util;
+pub mod workspace;

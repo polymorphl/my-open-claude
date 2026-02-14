@@ -22,12 +22,18 @@ pub(crate) fn draw(f: &mut Frame, app: &App, area: Rect) {
         .ok()
         .and_then(|p| p.to_str().map(String::from))
         .unwrap_or_else(|| "?".to_string());
+    let project_prefix = app
+        .workspace
+        .project_type
+        .map(|pt| format!("{}  ", pt.display_with_emoji()))
+        .unwrap_or_default();
+    let full_display = format!("{}{}", project_prefix, path_display);
     let max_path_len = path_area.width as usize;
-    let path_display = if path_display.chars().count() > max_path_len && max_path_len > 2 {
-        let tail: String = path_display.chars().rev().take(max_path_len - 1).collect();
+    let path_display = if full_display.chars().count() > max_path_len && max_path_len > 2 {
+        let tail: String = full_display.chars().rev().take(max_path_len - 1).collect();
         format!("…{}", tail.chars().rev().collect::<String>())
     } else {
-        path_display
+        full_display
     };
     let path_line = Line::from(Span::styled(
         path_display,

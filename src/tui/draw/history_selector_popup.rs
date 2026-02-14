@@ -160,7 +160,7 @@ pub(crate) fn draw_history_selector_popup(
             Span::raw("load  "),
             Span::styled("Ctrl+R ", Style::default().fg(Color::DarkGray)),
             Span::raw("rename  "),
-            Span::styled("Delete/Ctrl+D ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+D ", Style::default().fg(Color::DarkGray)),
             Span::raw("delete  "),
             Span::styled("Esc ", Style::default().fg(Color::DarkGray)),
             Span::raw("cancel  "),
