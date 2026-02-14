@@ -172,12 +172,14 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                 Event::Key(key) => {
                     let result = handlers::handle_key(
                         key,
-                        &mut app,
-                        &config,
-                        &mut api_messages,
-                        &mut pending_chat,
-                        &mut pending_model_fetch,
-                        &rt,
+                        handlers::HandleKeyContext {
+                            app: &mut app,
+                            config: &config,
+                            api_messages: &mut api_messages,
+                            pending_chat: &mut pending_chat,
+                            pending_model_fetch: &mut pending_model_fetch,
+                            rt: &rt,
+                        },
                     );
                     if result == HandleResult::Break {
                         chat_result::save_conversation_if_dirty(

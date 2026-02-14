@@ -62,9 +62,9 @@ impl super::Tool for GlobTool {
         }
     }
 
-    fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
+    fn execute(&self, args: &Value) -> Result<String, super::ToolError> {
         let parsed: GlobArgs = serde_json::from_value(args.clone())
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+            .map_err(|e| std::io::Error::other(format!("Invalid arguments: {}", e)))?;
 
         let matcher = Glob::new(&parsed.pattern)
             .map_err(|e| format!("Invalid glob pattern: {}", e))?

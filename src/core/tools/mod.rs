@@ -20,8 +20,10 @@ pub use read::ReadTool;
 pub use write::WriteTool;
 
 /// Default path for search tools (current directory).
+pub const DEFAULT_SEARCH_PATH: &str = ".";
+
 pub fn default_search_path() -> String {
-    ".".to_string()
+    DEFAULT_SEARCH_PATH.to_string()
 }
 
 /// Default max results for Grep (matches).
@@ -50,12 +52,15 @@ pub fn tool_definition(name: &str, description: &str, parameters: Value) -> Valu
     })
 }
 
+/// Error type for tool execution (Send + Sync for use across async/thread boundaries).
+pub type ToolError = Box<dyn std::error::Error + Send + Sync>;
+
 /// Trait for LLM tools. Each tool provides its API definition and executes with typed arguments.
 pub trait Tool: Send + Sync {
     fn name(&self) -> &'static str;
     fn definition(&self) -> Value;
     fn args_preview(&self, args: &Value) -> String;
-    fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>>;
+    fn execute(&self, args: &Value) -> Result<String, ToolError>;
 }
 
 static CACHED_TOOLS: OnceLock<Vec<Box<dyn Tool>>> = OnceLock::new();

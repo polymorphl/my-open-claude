@@ -131,12 +131,16 @@ pub(crate) fn handle_history_selector_key(
 
 /// Open the history selector. Caller must save current conversation first if dirty.
 pub(crate) fn open_history_selector() -> HistorySelectorState {
-    let conversations = crate::core::history::list_conversations().unwrap_or_else(|_| vec![]);
+    let (conversations, error) = match crate::core::history::list_conversations() {
+        Ok(c) => (c, None),
+        Err(e) => (vec![], Some(e.to_string())),
+    };
     HistorySelectorState {
         conversations,
         selected_index: 0,
         list_state: ratatui::widgets::ListState::default(),
         filter: String::new(),
         renaming: None,
+        error,
     }
 }

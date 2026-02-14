@@ -51,17 +51,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load environment variables from .env file
     dotenv().ok();
 
+    // Initialize logging (warn level by default; use RUST_LOG=debug for verbose)
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
+        .try_init()
+        .ok();
+
     // Parse command-line arguments
     let args = Args::parse();
 
-    // Load application configuration, exit on failure
-    let config = match core::config::load() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Configuration Error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    // Load application configuration
+    let config = core::config::load()?;
 
     // Handle single prompt mode
     if let Some(prompt) = args.prompt {

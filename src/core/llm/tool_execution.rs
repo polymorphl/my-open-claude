@@ -56,14 +56,11 @@ pub fn is_ask_mode(mode: &str) -> bool {
 }
 
 /// Run a tool and format errors. Logs the underlying error before returning user-facing string.
-pub(crate) fn tool_result_string(
-    res: Result<String, Box<dyn std::error::Error>>,
-    tool_name: &str,
-) -> String {
+pub(crate) fn tool_result_string(res: Result<String, tools::ToolError>, tool_name: &str) -> String {
     match res {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Tool {} error: {}", tool_name, e);
+            log::warn!("Tool {} error: {}", tool_name, e);
             format!("Error: {}", e)
         }
     }

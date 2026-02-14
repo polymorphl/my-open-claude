@@ -43,6 +43,8 @@ pub struct HistorySelectorState {
     pub filter: String,
     /// When renaming: (conversation_id, new_title_input).
     pub renaming: Option<(String, String)>,
+    /// Error loading conversations or from delete/rename.
+    pub error: Option<String>,
 }
 
 /// Scroll position: either a specific line index, or "at bottom" (follow new content).
@@ -62,6 +64,8 @@ pub struct App {
     pub(crate) messages: Vec<ChatMessage>,
     /// User input in the text field.
     pub(crate) input: String,
+    /// Cursor position in the input (byte index; used for Left/Right, insert, Backspace).
+    pub(crate) input_cursor: usize,
     pub(crate) scroll: ScrollPosition,
     pub(crate) last_max_scroll: usize,
     /// Index of the selected suggestion (Tab to cycle).
@@ -110,6 +114,7 @@ impl App {
         Self {
             messages: vec![],
             input: String::new(),
+            input_cursor: 0,
             scroll: ScrollPosition::default(),
             last_max_scroll: 0,
             selected_suggestion: 0,
@@ -165,11 +170,37 @@ impl App {
     }
 
     /// Populate messages from API format (user/assistant only).
+    /// Malformed messages (e.g. unsupported content types) are surfaced as
+    /// "[Unsupported message format]" with a log warning instead of silently omitted.
     pub(crate) fn set_messages_from_api(&mut self, api_messages: &[Value]) {
         self.messages.clear();
         for msg in api_messages {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let content = message::extract_content(msg).unwrap_or_default();
+            let content = match message::extract_content(msg) {
+                Some(c) => c,
+                None => {
+                    let content_type = msg
+                        .get("content")
+                        .map(|c| {
+                            if c.is_string() {
+                                "string"
+                            } else if c.is_array() {
+                                "array"
+                            } else if c.is_object() {
+                                "object"
+                            } else {
+                                "other"
+                            }
+                        })
+                        .unwrap_or("missing");
+                    log::warn!(
+                        "Could not extract content from message: role={}, content_type={}",
+                        role,
+                        content_type
+                    );
+                    "[Unsupported message format]".to_string()
+                }
+            };
             match role {
                 "user" => self.messages.push(ChatMessage::User(content)),
                 "assistant" => self.messages.push(ChatMessage::Assistant(content)),

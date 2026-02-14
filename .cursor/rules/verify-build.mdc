@@ -1,0 +1,20 @@
+---
+description: Always verify compilation after code changes (cargo build)
+alwaysApply: true
+---
+
+# Build Verification
+
+When making **code changes** or **fixes** in this Rust project:
+
+1. **Always run** `cargo build` **at the end** to verify the project compiles.
+2. If the build **fails**, fix the errors before concluding.
+3. Never consider a modification task complete without verifying that `cargo build` succeeds.
+
+## Workflow
+
+```
+Modifications → cargo build → Success ✓ / Failure → fix and rebuild
+```
+
+This prevents delivering broken code to the developer.
