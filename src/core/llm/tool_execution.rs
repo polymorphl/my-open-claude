@@ -1,5 +1,7 @@
 //! Execute a single tool call from the agent loop.
 
+use std::path::Path;
+
 use serde_json::{Value, json};
 
 use crate::core::confirm::ConfirmDestructive;
@@ -10,6 +12,17 @@ use super::ChatResult;
 use super::ConfirmState;
 
 const WRITE_NAME: &str = "Write";
+
+/// File names treated as "init" targets (AGENT.md / AGENTS.md). Only one Write per session.
+const INIT_FILE_NAMES: &[&str] = &["AGENT.md", "AGENTS.md"];
+
+fn is_init_file_path(file_path: &str) -> bool {
+    Path::new(file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|n| INIT_FILE_NAMES.contains(&n))
+        .unwrap_or(false)
+}
 const EDIT_NAME: &str = "Edit";
 const BASH_NAME: &str = "Bash";
 const READ_NAME: &str = "Read";
@@ -116,6 +129,8 @@ pub(super) struct ToolCallContext<'a> {
     pub messages: &'a mut std::sync::Arc<Vec<Value>>,
     pub tool_log: &'a mut std::sync::Arc<Vec<String>>,
     pub on_progress: Option<&'a (dyn Fn(&str) + Send + Sync)>,
+    /// When set, blocks repeated Write to AGENT.md/AGENTS.md to prevent infinite loops.
+    pub init_file_written: Option<&'a mut bool>,
 }
 
 /// Execute a single tool call. Returns `Some(ChatResult::NeedsConfirmation)` if destructive and needs confirmation.
@@ -146,29 +161,51 @@ pub(super) fn execute_tool_call(
         progress(&log_line);
     }
 
-    let result =
-        if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
-            ASK_MODE_DISABLED.to_string()
-        } else {
-            match tools_list.iter().find(|t| t.name() == name) {
-                Some(tool) => {
-                    if name == BASH_NAME {
-                        match execute_bash_tool(tool.as_ref(), &args, &id, mode, ctx) {
-                            BashOutcome::Output(s) => s,
-                            BashOutcome::NeedsConfirmation(state) => {
-                                return Ok(Some(ChatResult::NeedsConfirmation {
-                                    command: state.command.clone(),
-                                    state,
-                                }));
-                            }
-                        }
-                    } else {
-                        tool_result_string(tool.execute(&args), name)
-                    }
-                }
-                None => format!("Error: unknown tool '{}'", name),
+    let result = if is_ask_mode(mode)
+        && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME)
+    {
+        ASK_MODE_DISABLED.to_string()
+    } else if name == WRITE_NAME {
+        let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+        if is_init_file_path(file_path)
+            && let Some(ref mut written) = ctx.init_file_written
+        {
+            if **written {
+                // Inject synthetic result to stop the Write loop; model will get this and should respond with summary.
+                let synthetic = "Already written this session. Do not call Write again. Provide your brief summary to the user now.";
+                std::sync::Arc::make_mut(ctx.messages).push(json!({
+                    "role": "tool",
+                    "tool_call_id": id,
+                    "content": synthetic
+                }));
+                return Ok(None);
             }
-        };
+            **written = true;
+        }
+        match tools_list.iter().find(|t| t.name() == name) {
+            Some(tool) => tool_result_string(tool.execute(&args), name),
+            None => format!("Error: unknown tool '{}'", name),
+        }
+    } else {
+        match tools_list.iter().find(|t| t.name() == name) {
+            Some(tool) => {
+                if name == BASH_NAME {
+                    match execute_bash_tool(tool.as_ref(), &args, &id, mode, ctx) {
+                        BashOutcome::Output(s) => s,
+                        BashOutcome::NeedsConfirmation(state) => {
+                            return Ok(Some(ChatResult::NeedsConfirmation {
+                                command: state.command.clone(),
+                                state,
+                            }));
+                        }
+                    }
+                } else {
+                    tool_result_string(tool.execute(&args), name)
+                }
+            }
+            None => format!("Error: unknown tool '{}'", name),
+        }
+    };
 
     // Truncate large tool outputs to stay within context budget.
     let result = match output_limit_for(name) {

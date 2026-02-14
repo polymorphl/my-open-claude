@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::core::config::Config;
 use crate::core::llm;
+use crate::core::workspace::Workspace;
 
 use super::PendingChat;
 
@@ -16,6 +17,7 @@ use super::PendingChat;
 pub fn spawn_chat(
     rt: &Arc<Runtime>,
     config: Arc<Config>,
+    workspace: Workspace,
     model_id: String,
     prompt: String,
     mode: String,
@@ -50,6 +52,7 @@ pub fn spawn_chat(
             confirm_destructive: None,
             previous_messages: prev_messages,
             options,
+            workspace: &workspace,
         }));
         let _ = result_tx.send(result);
     });

@@ -56,6 +56,7 @@ pub(super) async fn run_agent_loop(
 ) -> Result<ChatResult, ChatError> {
     let cancel_token = callbacks.cancel_token;
     let mut last_usage = TokenUsage::default();
+    let mut init_file_written = false;
 
     loop {
         // Check cancellation before starting a new API call.
@@ -219,6 +220,7 @@ pub(super) async fn run_agent_loop(
                 messages: params.messages,
                 tool_log: params.tool_log,
                 on_progress: callbacks.on_progress,
+                init_file_written: Some(&mut init_file_written),
             };
             if let Some(needs_confirmation) = tool_execution::execute_tool_call(
                 tool_call,

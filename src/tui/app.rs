@@ -4,6 +4,7 @@ use crate::core::history::ConversationMeta;
 use crate::core::llm::{ConfirmState, TokenUsage};
 use crate::core::message;
 use crate::core::models::ModelInfo;
+use crate::core::workspace::Workspace;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 use serde_json::Value;
@@ -106,10 +107,12 @@ pub struct App {
     pub(crate) token_usage: Option<TokenUsage>,
     /// Context window size (in tokens) for the current model.
     pub(crate) context_length: u64,
+    /// Workspace (root, project type, AGENT.md) detected at startup.
+    pub workspace: Workspace,
 }
 
 impl App {
-    pub fn new(model_id: String, model_name: String) -> Self {
+    pub fn new(model_id: String, model_name: String, workspace: Workspace) -> Self {
         let context_length = crate::core::models::resolve_context_length(&model_id);
         Self {
             messages: vec![],
@@ -136,6 +139,7 @@ impl App {
             is_streaming: false,
             token_usage: None,
             context_length,
+            workspace,
         }
     }
 

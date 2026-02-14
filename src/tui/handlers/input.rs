@@ -8,6 +8,7 @@ use tokio::runtime::Runtime;
 
 use crate::core::commands::{self, SlashCommand};
 use crate::core::config::Config;
+use crate::core::workspace;
 
 use super::super::app::{App, ScrollPosition};
 use super::super::constants::{self, SUGGESTIONS};
@@ -89,6 +90,11 @@ pub(crate) fn handle_main_input(
             app.input_cursor = app.input.len();
             app.pending_command_mode = Some(cmd.mode.to_string());
             app.selected_command_index = 0;
+            // Sync UI mode (Ask/Build buttons) with command's mode.
+            app.selected_suggestion = SUGGESTIONS
+                .iter()
+                .position(|s| *s == cmd.mode)
+                .unwrap_or(app.selected_suggestion);
             super::HandleResult::Continue
         }
 
@@ -143,6 +149,7 @@ pub(crate) fn handle_main_input(
                 let pc = chat_spawn::spawn_chat(
                     rt,
                     Arc::clone(config),
+                    workspace::detect(),
                     model_id,
                     input,
                     mode,

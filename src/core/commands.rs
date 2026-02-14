@@ -25,57 +25,68 @@ impl SlashCommand {
 /// All available slash commands.
 pub static SLASH_COMMANDS: &[SlashCommand] = &[
     SlashCommand {
+        name: "init",
+        description: "Create or update AGENTS.md for this project",
+        prompt_prefix: "Analyze this codebase and create an AGENTS.md file containing: \
+(1) Build/lint/test commands—especially for running a single test. \
+(2) Code style guidelines: imports, formatting, types, naming conventions, error handling. \
+The file will be given to agentic coding agents (such as yourself) that operate in this repository. Make it about 150 lines long. \
+If there are Cursor rules (Glob \".cursor/rules/*\", \".cursorrules\") or Copilot rules (Glob \".github/copilot-instructions.md\"), include them. Use Read on each path returned by Glob. \
+If AGENTS.md already exists, improve it; otherwise create it. One Write call only—then respond with a brief summary.",
+        mode: "Build",
+    },
+    SlashCommand {
         name: "test",
         description: "Write unit tests",
-        prompt_prefix: "Write comprehensive unit tests. If no target specified, explore the CWD with ListDir/Read/Grep to find relevant code. Cover edge cases and typical failures. Target: ",
+        prompt_prefix: "Write comprehensive unit tests. If no target specified, explore the CWD with ListDir/Read/Grep to find relevant code. Cover edge cases and typical failures.",
         mode: "Build",
     },
     SlashCommand {
         name: "review",
-        description: "Review code in current project (CWD)",
-        prompt_prefix: "Review the code in the current project (CWD). Explore with ListDir, Read, Grep, Glob. Point out bugs, style issues, and improvements. Focus area (optional): ",
-        mode: "Ask",
+        description: "Review Git changes (commit|branch|pr, defaults to uncommitted)",
+        prompt_prefix: "Review Git changes in the current workspace. By default review uncommitted changes: use Bash to run `git status` and `git diff` to get the changes. If a scope is specified (commit hash, branch name, or PR), review those changes instead. Point out bugs, style issues, and improvements in the changed code. Do not modify files—analysis only.",
+        mode: "Build",
     },
     SlashCommand {
         name: "explain",
         description: "Explain code or concepts simply (ELI5 style)",
-        prompt_prefix: "Explain in simple terms, avoiding jargon. Break down complex parts step by step. Target: ",
+        prompt_prefix: "Explain in simple terms, avoiding jargon. Break down complex parts step by step.",
         mode: "Ask",
     },
     SlashCommand {
         name: "fix",
         description: "Fix bugs",
-        prompt_prefix: "Identify and fix bugs. If no code given, explore the CWD with Read/Grep. Apply fixes with Edit or Write. Target: ",
+        prompt_prefix: "Identify and fix bugs. If no code given, explore the CWD with Read/Grep. Apply fixes with Edit or Write.",
         mode: "Build",
     },
     SlashCommand {
         name: "refactor",
         description: "Refactor code",
-        prompt_prefix: "Refactor for better readability and maintainability. Explore CWD if needed. Keep behavior unchanged. Target: ",
+        prompt_prefix: "Refactor for better readability and maintainability. Explore CWD if needed. Keep behavior unchanged.",
         mode: "Build",
     },
     SlashCommand {
         name: "doc",
         description: "Add documentation",
-        prompt_prefix: "Add clear documentation (comments, docstrings). If no target given, explore CWD and document key modules. Target: ",
+        prompt_prefix: "Add clear documentation (comments, docstrings). If no target given, explore CWD and document key modules.",
         mode: "Build",
     },
     SlashCommand {
         name: "commit",
         description: "Write commit message",
-        prompt_prefix: "Write a conventional commit message: type(scope): description. Use Bash to run `git status` and `git diff` if changes not specified. Context (optional): ",
+        prompt_prefix: "Write a conventional commit message: type(scope): description. Use Bash to run `git status` and `git diff` if changes not specified.",
         mode: "Ask",
     },
     SlashCommand {
         name: "debug",
         description: "Debug and fix issues",
-        prompt_prefix: "Debug and fix. Explore CWD with Read/Grep if needed. Identify root cause, then apply fix with Edit/Write. Issue: ",
+        prompt_prefix: "Debug and fix. Explore CWD with Read/Grep if needed. Identify root cause, then apply fix with Edit/Write.",
         mode: "Build",
     },
     SlashCommand {
         name: "why",
         description: "Explain design and rationale",
-        prompt_prefix: "Explain why this is written this way: design choices, trade-offs, rationale. Use Read/Grep to explore context if needed. Target: ",
+        prompt_prefix: "Explain why this is written this way: design choices, trade-offs, rationale. Use Read/Grep to explore context if needed.",
         mode: "Ask",
     },
 ];

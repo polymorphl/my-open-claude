@@ -80,15 +80,6 @@ pub(crate) fn handle_history_selector_key(
                 HistorySelectorAction::Keep
             }
         }
-        KeyCode::Delete => {
-            if selector.selected_index < filtered.len() {
-                HistorySelectorAction::Delete {
-                    id: filtered[selector.selected_index].id.clone(),
-                }
-            } else {
-                HistorySelectorAction::Keep
-            }
-        }
         KeyCode::Char('d') if key_modifiers.contains(KeyModifiers::CONTROL) => {
             if selector.selected_index < filtered.len() {
                 HistorySelectorAction::Delete {
