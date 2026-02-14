@@ -327,10 +327,7 @@ mod tests {
         let _lock = PERSISTENCE_TEST_LOCK.lock().unwrap();
         let tmp = tempfile::TempDir::new().expect("temp dir");
         unsafe {
-            std::env::set_var(
-                "TEST_DATA_DIR",
-                tmp.path().join("conversations"),
-            );
+            std::env::set_var("TEST_DATA_DIR", tmp.path().join("conversations"));
         }
         let _guard = EnvGuard("TEST_DATA_DIR");
 
@@ -375,10 +372,7 @@ mod tests {
         let _lock = PERSISTENCE_TEST_LOCK.lock().unwrap();
         let tmp = tempfile::TempDir::new().expect("temp dir");
         unsafe {
-            std::env::set_var(
-                "TEST_DATA_DIR",
-                tmp.path().join("conversations"),
-            );
+            std::env::set_var("TEST_DATA_DIR", tmp.path().join("conversations"));
         }
         let _guard = EnvGuard("TEST_DATA_DIR");
 
