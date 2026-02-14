@@ -1,7 +1,7 @@
 # My Open Claude
 
 [![CI](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml/badge.svg)](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/polymorphl/my-open-claude)](LICENSE)
+[![License](https://img.shields.io/badge/License-Polyform%20Noncommercial%201.0.0-blue)](LICENSE)
 
 ![my-open-claude TUI](screenshot.png)
 
