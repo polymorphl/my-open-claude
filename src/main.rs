@@ -59,8 +59,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command-line arguments
     let args = Args::parse();
 
-    // Load application configuration
-    let config = core::config::load()?;
+    // Load application configuration (print user-friendly message; exit uses Display not Debug)
+    let config = core::config::load().unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    });
 
     // Detect workspace (current directory, project type, AGENT.md)
     let workspace = core::workspace::detect();
