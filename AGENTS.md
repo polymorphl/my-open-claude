@@ -128,3 +128,4 @@ Every contribution must pass:
 
 ## Community
 - [Code of Conduct](CODE_OF_CONDUCT.md)
+- [License](LICENSE) — Polyform Noncommercial 1.0.0 (no commercial use)

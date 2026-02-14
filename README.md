@@ -1,6 +1,7 @@
 # My Open Claude
 
 [![CI](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml/badge.svg)](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/polymorphl/my-open-claude)](LICENSE)
 
 ![my-open-claude TUI](screenshot.png)
 
@@ -126,4 +127,5 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 
 ## Community
 
-[Code of Conduct](CODE_OF_CONDUCT.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [License](LICENSE) — Polyform Noncommercial 1.0.0 (no commercial use)
