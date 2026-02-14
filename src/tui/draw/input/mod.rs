@@ -88,6 +88,7 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
 
     if ac_height > 0 {
         let ac_area = inner_chunks[2];
+        // Welcome mode: keep centered narrow layout to avoid misalignment with mascot/input.
         let ac_rect = Rect {
             x: area.x + area.width.saturating_sub(input_width) / 2,
             y: ac_area.y,
