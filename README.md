@@ -89,6 +89,26 @@ The header shows your OpenRouter credit balance (total minus usage). Click it to
 - Type to filter by model name or ID.
 - The last selected model is saved and reused on next launch.
 
+### Slash commands
+
+Type `/` in the input to open an autocomplete menu. Each command prepends a prompt template and sets the mode (Ask or Build). Use Tab or Up/Down to navigate, Enter to select.
+
+| Command | Mode | Description |
+|---------|------|-------------|
+| `/init` | Build | Create or update AGENTS.md for this project |
+| `/test` | Build | Write unit tests |
+| `/review` | Build | Review Git changes (uncommitted, commit, branch, or PR) |
+| `/fix` | Build | Identify and fix bugs |
+| `/refactor` | Build | Refactor for readability and maintainability |
+| `/doc` | Build | Add documentation |
+| `/debug` | Build | Debug and fix issues |
+| `/explain` | Ask | Explain simply (ELI5 style) |
+| `/commit` | Ask | Write a conventional commit message |
+| `/why` | Ask | Explain design and rationale |
+
+- **Ask mode**: read-only (Read, Grep, ListDir, Glob only); no file writes or shell commands.
+- **Build mode**: full tools (Read, Write, Edit, Bash, etc.).
+
 ## Development
 
 - Run tests: `cargo test`
