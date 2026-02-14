@@ -16,7 +16,6 @@ use crate::core::persistence;
 pub struct Config {
     pub openai_config: OpenAIConfig,
     pub model_id: String,
-    #[allow(dead_code)]
     pub base_url: String,
     pub api_key: String,
     pub max_conversations: u32,
@@ -46,7 +45,6 @@ impl Config {
     }
 
     /// Returns the base URL for the AI service.
-    #[allow(dead_code)]
     pub fn base_url(&self) -> &str {
         &self.base_url
     }

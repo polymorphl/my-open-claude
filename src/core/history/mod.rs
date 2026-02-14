@@ -105,7 +105,10 @@ pub fn save_conversation(
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .unwrap_or_else(|e| {
+            log::warn!("System time before UNIX epoch: {}", e);
+            0
+        });
 
     let conv_id = id
         .map(String::from)
@@ -158,7 +161,7 @@ pub fn rename_conversation(id: &str, new_title: &str) -> io::Result<()> {
 
 /// Delete a conversation by ID. Removes the file and index entry.
 pub fn delete_conversation(id: &str) -> io::Result<()> {
-    storage::remove_conv_file(id);
+    storage::remove_conv_file(id)?;
     let mut index = storage::load_index()?;
     index.conversations.retain(|c| c.id != id);
     storage::save_index(&index)?;
@@ -183,7 +186,9 @@ pub fn prune_if_needed(config: &Config) -> io::Result<()> {
 
     let to_remove: Vec<_> = index.conversations.drain(max..).collect();
     for meta in &to_remove {
-        storage::remove_conv_file(&meta.id);
+        if let Err(e) = storage::remove_conv_file(&meta.id) {
+            log::warn!("Failed to remove conversation file {}: {}", meta.id, e);
+        }
     }
     storage::save_index(&index)?;
     Ok(())

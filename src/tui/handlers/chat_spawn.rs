@@ -13,23 +13,24 @@ use crate::core::workspace::Workspace;
 
 use super::PendingChat;
 
-/// Spawn a new chat request. Returns PendingChat with channels for progress, stream, and result.
-pub fn spawn_chat(
-    rt: &Arc<Runtime>,
-    config: Arc<Config>,
-    workspace: Workspace,
-    model_id: String,
-    prompt: String,
-    mode: String,
-    prev_messages: Option<Vec<Value>>,
-) -> PendingChat {
+/// Spawn an LLM task with progress/stream/result channels. The closure receives the runtime,
+/// options, and result sender, and must run block_on and send the result itself (so borrowed
+/// data stays valid for the duration).
+fn spawn_with_callbacks<F>(rt: &Arc<Runtime>, run_task: F) -> PendingChat
+where
+    F: FnOnce(
+            Arc<Runtime>,
+            llm::ChatOptions,
+            mpsc::Sender<Result<llm::ChatResult, llm::ChatError>>,
+        ) + Send
+        + 'static,
+{
     let (progress_tx, progress_rx) = mpsc::channel();
     let (stream_tx, stream_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
     let cancel_token = CancellationToken::new();
     let cancel_token_clone = cancel_token.clone();
 
-    let context_length = crate::core::models::resolve_context_length(&model_id);
     let rt_clone = Arc::clone(rt);
 
     let options = llm::ChatOptions {
@@ -43,6 +44,30 @@ pub fn spawn_chat(
     };
 
     std::thread::spawn(move || {
+        run_task(rt_clone, options, result_tx);
+    });
+
+    PendingChat {
+        progress_rx,
+        stream_rx,
+        result_rx,
+        cancel_token,
+    }
+}
+
+/// Spawn a new chat request. Returns PendingChat with channels for progress, stream, and result.
+pub fn spawn_chat(
+    rt: &Arc<Runtime>,
+    config: Arc<Config>,
+    workspace: Workspace,
+    model_id: String,
+    prompt: String,
+    mode: String,
+    prev_messages: Option<Vec<Value>>,
+) -> PendingChat {
+    let context_length = crate::core::models::resolve_context_length(&model_id);
+
+    spawn_with_callbacks(rt, move |rt_clone, options, result_tx| {
         let result = rt_clone.block_on(llm::chat(llm::ChatRequest {
             config: config.as_ref(),
             model: &model_id,
@@ -55,14 +80,7 @@ pub fn spawn_chat(
             workspace: &workspace,
         }));
         let _ = result_tx.send(result);
-    });
-
-    PendingChat {
-        progress_rx,
-        stream_rx,
-        result_rx,
-        cancel_token,
-    }
+    })
 }
 
 /// Spawn chat_resume after user confirmed or cancelled a destructive command.
@@ -73,26 +91,9 @@ pub fn spawn_chat_resume(
     state: llm::ConfirmState,
     confirmed: bool,
 ) -> PendingChat {
-    let (progress_tx, progress_rx) = mpsc::channel();
-    let (stream_tx, stream_rx) = mpsc::channel();
-    let (result_tx, result_rx) = mpsc::channel();
-    let cancel_token = CancellationToken::new();
-    let cancel_token_clone = cancel_token.clone();
-
     let context_length = crate::core::models::resolve_context_length(&model_id);
-    let rt_clone = Arc::clone(rt);
 
-    let options = llm::ChatOptions {
-        on_progress: Some(Box::new(move |s| {
-            let _ = progress_tx.send(s.to_string());
-        })),
-        on_content_chunk: Some(Box::new(move |s| {
-            let _ = stream_tx.send(s.to_string());
-        })),
-        cancel_token: Some(cancel_token_clone),
-    };
-
-    std::thread::spawn(move || {
+    spawn_with_callbacks(rt, move |rt_clone, options, result_tx| {
         let result = rt_clone.block_on(llm::chat_resume(
             config.as_ref(),
             &model_id,
@@ -102,12 +103,5 @@ pub fn spawn_chat_resume(
             options,
         ));
         let _ = result_tx.send(result);
-    });
-
-    PendingChat {
-        progress_rx,
-        stream_rx,
-        result_rx,
-        cancel_token,
-    }
+    })
 }
