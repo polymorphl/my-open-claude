@@ -61,9 +61,9 @@ impl super::Tool for ReadTool {
         }
     }
 
-    fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
+    fn execute(&self, args: &Value) -> Result<String, super::ToolError> {
         let parsed: ReadArgs = serde_json::from_value(args.clone())
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+            .map_err(|e| std::io::Error::other(format!("Invalid arguments: {}", e)))?;
 
         let content = std::fs::read_to_string(&parsed.file_path)?;
         if parsed.start_line.is_none() && parsed.end_line.is_none() {
@@ -101,47 +101,47 @@ mod tests {
     #[test]
     fn read_full_file() {
         let tool = ReadTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), "line1\nline2\nline3").unwrap();
-        let args = json!({"file_path": file.path().to_str().unwrap()});
-        let result = tool.execute(&args).unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), "line1\nline2\nline3").expect("write");
+        let args = json!({"file_path": file.path().to_str().expect("path")});
+        let result = tool.execute(&args).expect("execute");
         assert_eq!(result, "line1\nline2\nline3");
     }
 
     #[test]
     fn read_line_range() {
         let tool = ReadTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), "a\nb\nc\nd\ne").unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), "a\nb\nc\nd\ne").expect("write");
         let args = json!({
-            "file_path": file.path().to_str().unwrap(),
+            "file_path": file.path().to_str().expect("path"),
             "start_line": 2,
             "end_line": 4
         });
-        let result = tool.execute(&args).unwrap();
+        let result = tool.execute(&args).expect("execute");
         assert_eq!(result, "b\nc\nd");
     }
 
     #[test]
     fn read_from_line_to_end() {
         let tool = ReadTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), "a\nb\nc").unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), "a\nb\nc").expect("write");
         let args = json!({
-            "file_path": file.path().to_str().unwrap(),
+            "file_path": file.path().to_str().expect("path"),
             "start_line": 2
         });
-        let result = tool.execute(&args).unwrap();
+        let result = tool.execute(&args).expect("execute");
         assert_eq!(result, "b\nc");
     }
 
     #[test]
     fn read_start_line_beyond_file_fails() {
         let tool = ReadTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), "a\nb").unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), "a\nb").expect("write");
         let args = json!({
-            "file_path": file.path().to_str().unwrap(),
+            "file_path": file.path().to_str().expect("path"),
             "start_line": 10
         });
         let err = tool.execute(&args).unwrap_err();
@@ -151,9 +151,9 @@ mod tests {
     #[test]
     fn read_empty_file() {
         let tool = ReadTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        let args = json!({"file_path": file.path().to_str().unwrap()});
-        let result = tool.execute(&args).unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        let args = json!({"file_path": file.path().to_str().expect("path")});
+        let result = tool.execute(&args).expect("execute");
         assert_eq!(result, "");
     }
 }

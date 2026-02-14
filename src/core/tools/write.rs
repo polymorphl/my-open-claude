@@ -41,9 +41,9 @@ impl super::Tool for WriteTool {
         str_arg(args, "file_path")
     }
 
-    fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
+    fn execute(&self, args: &Value) -> Result<String, super::ToolError> {
         let parsed: WriteArgs = serde_json::from_value(args.clone())
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+            .map_err(|e| std::io::Error::other(format!("Invalid arguments: {}", e)))?;
         std::fs::write(&parsed.file_path, &parsed.content)?;
         Ok("OK".to_string())
     }

@@ -83,18 +83,28 @@ fn handle_history_selector(
             app.history_selector = None;
         }
         history_selector::HistorySelectorAction::Delete { id } => {
-            let _ = history::delete_conversation(&id);
-            selector.conversations.retain(|c| c.id != id);
-            let filtered = history::filter_conversations(&selector.conversations, &selector.filter);
-            selector.selected_index = selector
-                .selected_index
-                .min(filtered.len().saturating_sub(1));
+            selector.error = None;
+            match history::delete_conversation(&id) {
+                Ok(()) => {
+                    selector.conversations.retain(|c| c.id != id);
+                    let filtered =
+                        history::filter_conversations(&selector.conversations, &selector.filter);
+                    selector.selected_index = selector
+                        .selected_index
+                        .min(filtered.len().saturating_sub(1));
+                }
+                Err(e) => selector.error = Some(format!("Delete failed: {}", e)),
+            }
         }
         history_selector::HistorySelectorAction::Rename { id, new_title } => {
-            if let Ok(()) = history::rename_conversation(&id, &new_title)
-                && let Some(meta) = selector.conversations.iter_mut().find(|c| c.id == id)
-            {
-                meta.title = new_title;
+            selector.error = None;
+            match history::rename_conversation(&id, &new_title) {
+                Ok(()) => {
+                    if let Some(meta) = selector.conversations.iter_mut().find(|c| c.id == id) {
+                        meta.title = new_title.clone();
+                    }
+                }
+                Err(e) => selector.error = Some(format!("Rename failed: {}", e)),
             }
         }
         history_selector::HistorySelectorAction::Keep => {}
@@ -162,16 +172,27 @@ pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> Handl
     HandleResult::Continue
 }
 
+/// Context for key event handling. Bundles mutable state to reduce parameter count.
+pub struct HandleKeyContext<'a> {
+    pub app: &'a mut App,
+    pub config: &'a Arc<Config>,
+    pub api_messages: &'a mut Option<Vec<Value>>,
+    pub pending_chat: &'a mut Option<PendingChat>,
+    pub pending_model_fetch: &'a mut Option<mpsc::Receiver<Result<Vec<ModelInfo>, String>>>,
+    pub rt: &'a Arc<Runtime>,
+}
+
 /// Handle a key event. Returns HandleResult::Break to exit the main loop.
-pub fn handle_key(
-    key: crossterm::event::KeyEvent,
-    app: &mut App,
-    config: &Arc<Config>,
-    api_messages: &mut Option<Vec<Value>>,
-    pending_chat: &mut Option<PendingChat>,
-    pending_model_fetch: &mut Option<mpsc::Receiver<Result<Vec<ModelInfo>, String>>>,
-    rt: &Arc<Runtime>,
-) -> HandleResult {
+pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) -> HandleResult {
+    let HandleKeyContext {
+        app,
+        config,
+        api_messages,
+        pending_chat,
+        pending_model_fetch,
+        rt,
+    } = ctx;
+
     if key.kind != KeyEventKind::Press {
         return HandleResult::Continue;
     }
@@ -226,6 +247,7 @@ pub fn handle_key(
     {
         if app.input.starts_with('/') {
             app.input.clear();
+            app.input_cursor = 0;
             app.selected_command_index = 0;
             return HandleResult::Continue;
         }

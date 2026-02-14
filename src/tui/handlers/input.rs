@@ -86,6 +86,7 @@ pub(crate) fn handle_main_input(
             } else {
                 format!("{} {}", cmd.prompt_prefix, rest)
             };
+            app.input_cursor = app.input.len();
             app.pending_command_mode = Some(cmd.mode.to_string());
             app.selected_command_index = 0;
             super::HandleResult::Continue
@@ -94,6 +95,7 @@ pub(crate) fn handle_main_input(
         // Esc: close slash autocomplete (clear input)
         (KeyCode::Esc, _) if in_slash_mode => {
             app.input.clear();
+            app.input_cursor = 0;
             app.selected_command_index = 0;
             super::HandleResult::Continue
         }
@@ -114,7 +116,9 @@ pub(crate) fn handle_main_input(
         (KeyCode::Enter, mods)
             if mods.contains(KeyModifiers::SHIFT) || mods.contains(KeyModifiers::ALT) =>
         {
-            app.input.push('\n');
+            let pos = app.input_cursor.min(app.input.len());
+            app.input.insert(pos, '\n');
+            app.input_cursor = pos + 1;
             super::HandleResult::Continue
         }
 
@@ -129,6 +133,7 @@ pub(crate) fn handle_main_input(
 
                 app.mark_dirty();
                 app.input.clear();
+                app.input_cursor = 0;
                 app.push_user(&input);
                 app.push_assistant(String::new());
                 app.scroll = ScrollPosition::Bottom;
@@ -152,18 +157,50 @@ pub(crate) fn handle_main_input(
         // Ctrl+U: clear input (e.g. recover from pasted error)
         (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
             app.input.clear();
+            app.input_cursor = 0;
             app.selected_command_index = 0;
             app.pending_command_mode = None;
             super::HandleResult::Continue
         }
 
         (KeyCode::Backspace, _) => {
-            app.input.pop();
+            let pos = app.input_cursor.min(app.input.len());
+            if pos > 0 {
+                let mut start = pos - 1;
+                while start > 0 && !app.input.is_char_boundary(start) {
+                    start -= 1;
+                }
+                app.input.drain(start..pos);
+                app.input_cursor = start;
+            }
             if !app.input.starts_with('/') {
                 app.selected_command_index = 0;
             }
             if app.input.is_empty() {
                 app.pending_command_mode = None;
+            }
+            super::HandleResult::Continue
+        }
+
+        (KeyCode::Left, _) if !in_slash_mode => {
+            let pos = app.input_cursor.min(app.input.len());
+            if pos > 0 {
+                let mut p = pos - 1;
+                while p > 0 && !app.input.is_char_boundary(p) {
+                    p -= 1;
+                }
+                app.input_cursor = p;
+            }
+            super::HandleResult::Continue
+        }
+        (KeyCode::Right, _) if !in_slash_mode => {
+            let pos = app.input_cursor.min(app.input.len());
+            if pos < app.input.len() {
+                let mut next = pos + 1;
+                while next < app.input.len() && !app.input.is_char_boundary(next) {
+                    next += 1;
+                }
+                app.input_cursor = next;
             }
             super::HandleResult::Continue
         }
@@ -197,7 +234,9 @@ pub(crate) fn handle_main_input(
             if mods.contains(KeyModifiers::ALT) {
                 return super::HandleResult::Continue;
             }
-            app.input.push(c);
+            let pos = app.input_cursor.min(app.input.len());
+            app.input.insert(pos, c);
+            app.input_cursor = pos + 1;
             // Clamp selected_command_index when filter shrinks (user typed more chars)
             if app.input.starts_with('/') {
                 let new_commands = commands::filter_commands(slash_filter(app));
