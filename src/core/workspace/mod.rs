@@ -84,14 +84,21 @@ fn detect_project_type(root: &Path) -> Option<ProjectType> {
 }
 
 fn load_agent_md(root: &Path) -> Option<String> {
-    // AGENTS.md (OpenCode/init convention) takes precedence over AGENT.md
-    for name in ["AGENTS.md", "AGENT.md"] {
-        let path = root.join(name);
+    // AGENTS.md (OpenCode/init convention) takes precedence over AGENT.md. Case-insensitive for Linux.
+    let entries = std::fs::read_dir(root).ok()?;
+    let mut agents_content = None;
+    let mut agent_content = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
         if path.is_file()
-            && let Ok(content) = std::fs::read_to_string(&path)
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
         {
-            return Some(content);
+            if name.eq_ignore_ascii_case("AGENTS.md") {
+                agents_content = std::fs::read_to_string(&path).ok();
+            } else if name.eq_ignore_ascii_case("AGENT.md") {
+                agent_content = std::fs::read_to_string(&path).ok();
+            }
         }
     }
-    None
+    agents_content.or(agent_content)
 }

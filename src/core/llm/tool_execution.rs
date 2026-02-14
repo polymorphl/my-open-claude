@@ -13,14 +13,19 @@ use super::ConfirmState;
 
 const WRITE_NAME: &str = "Write";
 
-/// File names treated as "init" targets (AGENT.md / AGENTS.md). Only one Write per session.
-const INIT_FILE_NAMES: &[&str] = &["AGENT.md", "AGENTS.md"];
+/// File names treated as "init" targets (AGENT.md / AGENTS.md). Case-insensitive for Linux.
+/// Only one Write per session.
+const INIT_FILE_NAMES: &[&str] = &["agent.md", "agents.md"];
 
 fn is_init_file_path(file_path: &str) -> bool {
     Path::new(file_path)
         .file_name()
         .and_then(|s| s.to_str())
-        .map(|n| INIT_FILE_NAMES.contains(&n))
+        .map(|n| {
+            INIT_FILE_NAMES
+                .iter()
+                .any(|&init| n.eq_ignore_ascii_case(init))
+        })
         .unwrap_or(false)
 }
 const EDIT_NAME: &str = "Edit";
