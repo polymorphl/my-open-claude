@@ -125,3 +125,6 @@ Every contribution must pass:
 - Squash commits before merging
 - Write meaningful commit messages
 - Update documentation alongside code changes
+
+## Community
+- [Code of Conduct](CODE_OF_CONDUCT.md)

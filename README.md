@@ -123,3 +123,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 - `src/core/models/` — model discovery, 24h cache, filtering
 - `src/core/tools/` — read, write, edit, bash, grep, list_dir, glob
 - `src/tui/` — terminal UI: app state, handlers (key/mouse), draw (header, history, input, popups)
+
+## Community
+
+[Code of Conduct](CODE_OF_CONDUCT.md)
