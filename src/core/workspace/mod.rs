@@ -87,10 +87,10 @@ fn load_agent_md(root: &Path) -> Option<String> {
     // AGENTS.md (OpenCode/init convention) takes precedence over AGENT.md
     for name in ["AGENTS.md", "AGENT.md"] {
         let path = root.join(name);
-        if path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                return Some(content);
-            }
+        if path.is_file()
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            return Some(content);
         }
     }
     None

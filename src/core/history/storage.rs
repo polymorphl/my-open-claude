@@ -92,10 +92,11 @@ pub(super) fn write_conv_file(id: &str, messages: &[Value]) -> io::Result<()> {
     Ok(())
 }
 
-pub(super) fn remove_conv_file(id: &str) {
-    if let Some(p) = conv_path(id)
-        && let Err(e) = fs::remove_file(&p)
-    {
-        log::warn!("Failed to remove conversation file {}: {}", p.display(), e);
-    }
+/// Remove a conversation file by ID. Returns Ok(()) if removed or path unavailable; Err on IO failure.
+pub(super) fn remove_conv_file(id: &str) -> io::Result<()> {
+    let Some(p) = conv_path(id) else {
+        return Ok(());
+    };
+    fs::remove_file(&p)?;
+    Ok(())
 }
