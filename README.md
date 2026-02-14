@@ -115,6 +115,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 - Run tests: `cargo test`
 - Check formatting: `cargo fmt --check` (or `cargo fmt` to format)
 - Lint: `cargo clippy --all-targets -- -D warnings`
+- [Architecture & flows](docs/ARCHITECTURE.md) — diagrams and data flow
 
 ## Project structure
 
@@ -123,7 +124,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 - `src/core/llm/` — chat, agent loop, tool execution, streaming
 - `src/core/models/` — model discovery, 24h cache, filtering
 - `src/core/tools/` — read, write, edit, bash, grep, list_dir, glob
-- `src/tui/` — terminal UI: app state, handlers (key/mouse), draw (header, history, input, popups)
+- `src/tui/` — terminal UI: app/ (state, messages), handlers (keyboard/mouse), draw (header, history, input, popups)
 
 ## Community
 
