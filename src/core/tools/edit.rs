@@ -52,9 +52,9 @@ impl super::Tool for EditTool {
         str_arg(args, "file_path")
     }
 
-    fn execute(&self, args: &Value) -> Result<String, Box<dyn std::error::Error>> {
+    fn execute(&self, args: &Value) -> Result<String, super::ToolError> {
         let parsed: EditArgs = serde_json::from_value(args.clone())
-            .map_err(|e| format!("Invalid arguments: {}", e))?;
+            .map_err(|e| std::io::Error::other(format!("Invalid arguments: {}", e)))?;
 
         let content = fs::read_to_string(&parsed.file_path)
             .map_err(|e| format!("Cannot read file '{}': {}", parsed.file_path, e))?;
@@ -98,17 +98,17 @@ mod tests {
     #[test]
     fn edit_replaces_unique_occurrence() {
         let tool = EditTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), "hello world\n").unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), "hello world\n").expect("write");
         let args = json!({
-            "file_path": file.path().to_str().unwrap(),
+            "file_path": file.path().to_str().expect("path"),
             "old_string": "world",
             "new_string": "earth"
         });
-        let result = tool.execute(&args).unwrap();
+        let result = tool.execute(&args).expect("execute");
         assert!(result.contains("OK"));
         assert_eq!(
-            std::fs::read_to_string(file.path()).unwrap(),
+            std::fs::read_to_string(file.path()).expect("read"),
             "hello earth\n"
         );
     }
@@ -116,10 +116,10 @@ mod tests {
     #[test]
     fn edit_fails_when_old_string_not_found() {
         let tool = EditTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), "hello world").unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), "hello world").expect("write");
         let args = json!({
-            "file_path": file.path().to_str().unwrap(),
+            "file_path": file.path().to_str().expect("path"),
             "old_string": "xyz",
             "new_string": "replacement"
         });
@@ -130,10 +130,10 @@ mod tests {
     #[test]
     fn edit_fails_when_old_string_ambiguous() {
         let tool = EditTool;
-        let file = tempfile::NamedTempFile::new().unwrap();
-        std::fs::write(file.path(), "foo foo foo").unwrap();
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), "foo foo foo").expect("write");
         let args = json!({
-            "file_path": file.path().to_str().unwrap(),
+            "file_path": file.path().to_str().expect("path"),
             "old_string": "foo",
             "new_string": "bar"
         });

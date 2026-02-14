@@ -14,6 +14,7 @@ use tokio_util::sync::CancellationToken;
 use crate::core::config::Config;
 use crate::core::tools;
 use crate::core::tools::Tool;
+use crate::core::workspace::Workspace;
 
 pub use error::{ChatError, map_api_error};
 pub use stream::TokenUsage;
@@ -48,10 +49,33 @@ pub struct ConfirmState {
 }
 
 /// Callback for progress updates during chat (e.g. "Calling API...", "→ Bash: ls").
-pub type OnProgress = Box<dyn Fn(&str) + Send>;
+/// Sync required so futures holding &OnProgress across await points are Send.
+pub type OnProgress = Box<dyn Fn(&str) + Send + Sync>;
 
 /// Callback for each streamed content chunk (text only).
-pub type OnContentChunk = Box<dyn Fn(&str) + Send>;
+/// Sync required so futures holding &OnContentChunk across await points are Send.
+pub type OnContentChunk = Box<dyn Fn(&str) + Send + Sync>;
+
+/// Optional callbacks for chat: progress, streaming, cancellation.
+#[derive(Default)]
+pub struct ChatOptions {
+    pub on_progress: Option<OnProgress>,
+    pub on_content_chunk: Option<OnContentChunk>,
+    pub cancel_token: Option<CancellationToken>,
+}
+
+/// Parameters for starting a new chat.
+pub struct ChatRequest<'a> {
+    pub config: &'a Config,
+    pub model: &'a str,
+    pub prompt: &'a str,
+    pub mode: &'a str,
+    pub context_length: u64,
+    pub confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
+    pub previous_messages: Option<Vec<Value>>,
+    pub options: ChatOptions,
+    pub workspace: &'a Workspace,
+}
 
 /// Run an agent loop that:
 /// - starts with the user's prompt (and optional previous conversation)
@@ -59,30 +83,33 @@ pub type OnContentChunk = Box<dyn Fn(&str) + Send>;
 /// - executes any requested tools (except Write/Bash in Ask mode)
 /// - feeds tool results back to the model
 /// - stops when the model responds without tool calls
-#[allow(clippy::too_many_arguments)]
-pub async fn chat(
-    config: &Config,
-    model: &str,
-    prompt: &str,
-    mode: &str,
-    context_length: u64,
-    confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
-    previous_messages: Option<Vec<Value>>,
-    on_progress: Option<OnProgress>,
-    on_content_chunk: Option<OnContentChunk>,
-    cancel_token: Option<CancellationToken>,
-) -> Result<ChatResult, ChatError> {
-    let client = Client::with_config(config.openai_config.clone());
+pub async fn chat(req: ChatRequest<'_>) -> Result<ChatResult, ChatError> {
+    let client = Client::with_config(req.config.openai_config.clone());
 
-    let cwd = std::env::current_dir()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| ".".to_string());
+    let root = req.workspace.root.display().to_string();
+    let project_type = req
+        .workspace
+        .project_type
+        .map(|pt| pt.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let mut content = format!(
+        "Workspace root: {}\nProject type: {}\nUse the workspace root as the default base path for Read, Write, Grep, ListDir, Glob, and Edit when the user does not specify a path.",
+        root, project_type
+    );
+
+    if let Some(ref agent_md) = req.workspace.agent_md {
+        content.push_str("\n\n--- Project context (AGENTS.md) ---\n");
+        content.push_str(agent_md);
+        content.push_str("\n---");
+    }
+
     let system_msg = json!({
         "role": "system",
-        "content": format!("Current working directory: {}", cwd)
+        "content": content
     });
 
-    let mut messages: Vec<Value> = previous_messages.unwrap_or_default();
+    let mut messages: Vec<Value> = req.previous_messages.unwrap_or_default();
     if messages.is_empty()
         || messages
             .first()
@@ -93,48 +120,51 @@ pub async fn chat(
     }
     messages.push(json!({
         "role": "user",
-        "content": prompt,
+        "content": req.prompt,
     }));
     let mut messages = Arc::new(messages);
     let mut tool_log = Arc::new(Vec::<String>::new());
+    let confirm_destructive = req.confirm_destructive;
 
     agent_loop::run_agent_loop(
-        &client,
-        config,
-        model,
-        context_length,
-        tools::definitions(),
-        tools::all(),
-        &mut messages,
-        &mut tool_log,
-        mode,
-        &confirm_destructive,
-        on_progress.as_deref(),
-        on_content_chunk.as_deref(),
-        cancel_token.as_ref(),
+        agent_loop::AgentLoopParams {
+            client: &client,
+            model: req.model,
+            context_length: req.context_length,
+            tools_defs: tools::definitions(),
+            tools_list: tools::all(),
+            messages: &mut messages,
+            tool_log: &mut tool_log,
+            mode: req.mode,
+        },
+        agent_loop::AgentLoopCallbacks {
+            confirm_destructive: &confirm_destructive,
+            on_progress: req.options.on_progress.as_deref(),
+            on_content_chunk: req.options.on_content_chunk.as_deref(),
+            cancel_token: req.options.cancel_token.as_ref(),
+        },
     )
     .await
 }
 
 /// Resume the chat loop after user confirmed or cancelled a destructive command.
-#[allow(clippy::too_many_arguments)]
 pub async fn chat_resume(
     config: &Config,
     model: &str,
     context_length: u64,
     state: ConfirmState,
     confirmed: bool,
-    on_progress: Option<OnProgress>,
-    on_content_chunk: Option<OnContentChunk>,
-    cancel_token: Option<CancellationToken>,
+    options: impl Into<ChatOptions>,
 ) -> Result<ChatResult, ChatError> {
+    let opts = options.into();
     let client = Client::with_config(config.openai_config.clone());
 
     let bash_tool = tools::BashTool;
     let result = if confirmed {
-        bash_tool
-            .execute(&json!({ "command": state.command }))
-            .unwrap_or_else(|e| format!("Error: {}", e))
+        tool_execution::tool_result_string(
+            bash_tool.execute(&json!({ "command": state.command })),
+            "Bash",
+        )
     } else {
         "Command cancelled (destructive command not confirmed).".to_string()
     };
@@ -151,19 +181,22 @@ pub async fn chat_resume(
     let tools_list = tools::all();
 
     agent_loop::run_agent_loop(
-        &client,
-        config,
-        model,
-        context_length,
-        &tools_defs,
-        tools_list,
-        &mut messages,
-        &mut tool_log,
-        &state.mode,
-        &None,
-        on_progress.as_deref(),
-        on_content_chunk.as_deref(),
-        cancel_token.as_ref(),
+        agent_loop::AgentLoopParams {
+            client: &client,
+            model,
+            context_length,
+            tools_defs: &tools_defs,
+            tools_list,
+            messages: &mut messages,
+            tool_log: &mut tool_log,
+            mode: &state.mode,
+        },
+        agent_loop::AgentLoopCallbacks {
+            confirm_destructive: &None,
+            on_progress: opts.on_progress.as_deref(),
+            on_content_chunk: opts.on_content_chunk.as_deref(),
+            cancel_token: opts.cancel_token.as_ref(),
+        },
     )
     .await
 }

@@ -7,7 +7,6 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-use crate::core::config::Config;
 use crate::core::confirm::ConfirmDestructive;
 use crate::core::tools;
 
@@ -30,24 +29,34 @@ fn make_complete(
     }
 }
 
+/// Callbacks and options for the agent loop (confirmation, progress, streaming, cancellation).
+pub(super) struct AgentLoopCallbacks<'a> {
+    pub confirm_destructive: &'a Option<ConfirmDestructive>,
+    pub on_progress: Option<&'a (dyn Fn(&str) + Send + Sync)>,
+    pub on_content_chunk: Option<&'a (dyn Fn(&str) + Send + Sync)>,
+    pub cancel_token: Option<&'a CancellationToken>,
+}
+
+/// Core parameters for the agent loop (API, model, tools, messages).
+pub(super) struct AgentLoopParams<'a> {
+    pub client: &'a Client<OpenAIConfig>,
+    pub model: &'a str,
+    pub context_length: u64,
+    pub tools_defs: &'a [Value],
+    pub tools_list: &'a [Box<dyn tools::Tool>],
+    pub messages: &'a mut Arc<Vec<Value>>,
+    pub tool_log: &'a mut Arc<Vec<String>>,
+    pub mode: &'a str,
+}
+
 /// Run the agent loop: call API, stream response, execute tools, repeat.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_agent_loop(
-    client: &Client<OpenAIConfig>,
-    _config: &Config,
-    model: &str,
-    context_length: u64,
-    tools_defs: &[Value],
-    tools_list: &[Box<dyn tools::Tool>],
-    messages: &mut Arc<Vec<Value>>,
-    tool_log: &mut Arc<Vec<String>>,
-    mode: &str,
-    confirm_destructive: &Option<ConfirmDestructive>,
-    on_progress: Option<&(dyn Fn(&str) + Send)>,
-    on_content_chunk: Option<&(dyn Fn(&str) + Send)>,
-    cancel_token: Option<&CancellationToken>,
+    params: AgentLoopParams<'_>,
+    callbacks: AgentLoopCallbacks<'_>,
 ) -> Result<ChatResult, ChatError> {
+    let cancel_token = callbacks.cancel_token;
     let mut last_usage = TokenUsage::default();
+    let mut init_file_written = false;
 
     loop {
         // Check cancellation before starting a new API call.
@@ -56,19 +65,19 @@ pub(super) async fn run_agent_loop(
         }
 
         // Truncate context if it exceeds the model's window.
-        context::truncate_if_needed(Arc::make_mut(messages), context_length);
+        context::truncate_if_needed(Arc::make_mut(params.messages), params.context_length);
 
-        if let Some(ref progress) = on_progress {
+        if let Some(ref progress) = callbacks.on_progress {
             progress("Calling API...");
         }
 
         // Start the streaming API call, racing against cancellation.
-        let chat_api = client.chat();
+        let chat_api = params.client.chat();
         let stream_future = chat_api.create_stream_byot::<_, Value>(json!({
-            "model": model,
-            "messages": messages.as_ref(),
+            "model": params.model,
+            "messages": params.messages.as_ref(),
             "tool_choice": "auto",
-            "tools": tools_defs,
+            "tools": params.tools_defs,
             "stream": true,
         }));
 
@@ -129,7 +138,7 @@ pub(super) async fn run_agent_loop(
             if let Some(content) = delta["content"].as_str() {
                 if !content.is_empty() && full_content.len() + content.len() <= MAX_CONTENT_BYTES {
                     full_content.push_str(content);
-                    if let Some(ref cb) = on_content_chunk {
+                    if let Some(ref cb) = callbacks.on_content_chunk {
                         cb(content);
                     }
                 } else if full_content.len() >= MAX_CONTENT_BYTES {
@@ -167,10 +176,10 @@ pub(super) async fn run_agent_loop(
             })
         };
 
-        Arc::make_mut(messages).push(assistant_message.clone());
+        Arc::make_mut(params.messages).push(assistant_message.clone());
 
         // Summarize Write/Edit tool arguments to reduce context bloat on subsequent turns.
-        context::summarize_write_args_in_last(Arc::make_mut(messages).as_mut_slice());
+        context::summarize_write_args_in_last(Arc::make_mut(params.messages).as_mut_slice());
 
         let tool_calls_opt = assistant_message
             .get("tool_calls")
@@ -179,8 +188,8 @@ pub(super) async fn run_agent_loop(
         let Some(tool_calls) = tool_calls_opt else {
             return Ok(make_complete(
                 &full_content,
-                tool_log.as_ref(),
-                messages.as_ref(),
+                params.tool_log.as_ref(),
+                params.messages.as_ref(),
                 last_usage.clone(),
             ));
         };
@@ -188,8 +197,8 @@ pub(super) async fn run_agent_loop(
         if tool_calls.is_empty() {
             return Ok(make_complete(
                 &full_content,
-                tool_log.as_ref(),
-                messages.as_ref(),
+                params.tool_log.as_ref(),
+                params.messages.as_ref(),
                 last_usage.clone(),
             ));
         }
@@ -205,15 +214,19 @@ pub(super) async fn run_agent_loop(
                 return Err(ChatError::Cancelled);
             }
 
+            let mut tool_ctx = tool_execution::ToolCallContext {
+                confirm_destructive: callbacks.confirm_destructive,
+                tools_defs: params.tools_defs,
+                messages: params.messages,
+                tool_log: params.tool_log,
+                on_progress: callbacks.on_progress,
+                init_file_written: Some(&mut init_file_written),
+            };
             if let Some(needs_confirmation) = tool_execution::execute_tool_call(
                 tool_call,
-                tools_list,
-                mode,
-                confirm_destructive,
-                tools_defs,
-                messages,
-                tool_log,
-                on_progress,
+                params.tools_list,
+                params.mode,
+                &mut tool_ctx,
             )? {
                 return Ok(needs_confirmation);
             }

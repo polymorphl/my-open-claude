@@ -10,6 +10,8 @@ mod welcome_mascot;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
 
+use crate::core::commands;
+
 use super::app::App;
 use super::constants::ACCENT;
 
@@ -32,12 +34,19 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         input::draw_welcome_center(f, app, chunks[2]);
         input::draw_bottom_bar(f, app, chunks[4]);
     } else {
+        let input_section_height = if app.input.starts_with('/')
+            && !commands::filter_commands(app.input.get(1..).unwrap_or("")).is_empty()
+        {
+            input::AUTOCOMPLETE_VISIBLE_LINES + super::constants::INPUT_LINES + 3
+        } else {
+            super::constants::INPUT_LINES + 3
+        };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(2),
                 Constraint::Min(3),
-                Constraint::Length(6),
+                Constraint::Length(input_section_height),
             ])
             .split(area);
         header::draw_header(f, app, chunks[0], ACCENT);

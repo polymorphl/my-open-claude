@@ -108,7 +108,13 @@ pub(crate) fn draw_history_selector_popup(
         .min(filtered.len().saturating_sub(1));
     selector.selected_index = clamped_index;
 
-    if filtered.is_empty() {
+    if let Some(ref err) = selector.error {
+        let para = Paragraph::new(Line::from(Span::styled(
+            format!("Error loading history: {}", err),
+            Style::default().fg(Color::Red),
+        )));
+        f.render_widget(para, list_area);
+    } else if filtered.is_empty() {
         let msg = if selector.filter.is_empty() {
             "No conversations yet"
         } else {
@@ -154,7 +160,7 @@ pub(crate) fn draw_history_selector_popup(
             Span::raw("load  "),
             Span::styled("Ctrl+R ", Style::default().fg(Color::DarkGray)),
             Span::raw("rename  "),
-            Span::styled("Delete/Ctrl+D ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+D ", Style::default().fg(Color::DarkGray)),
             Span::raw("delete  "),
             Span::styled("Esc ", Style::default().fg(Color::DarkGray)),
             Span::raw("cancel  "),

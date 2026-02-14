@@ -25,12 +25,30 @@ use tokio::runtime::Runtime;
 use crate::core::config::Config;
 use crate::core::credits;
 use crate::core::models::{self};
+use crate::core::workspace::Workspace;
 
 use handlers::{HandleResult, PendingChat, set_cursor_shape};
 
 const CREDITS_REFRESH_INTERVAL: Duration = Duration::from_secs(30 * 60); // 30 minutes
 
 use draw::draw;
+
+/// Spawn credits fetch in background. Returns receiver for (total_credits, total_usage) or error string.
+fn spawn_credits_fetch(
+    config: Arc<Config>,
+    rt: &Arc<Runtime>,
+) -> mpsc::Receiver<Result<(f64, f64), String>> {
+    let (tx, rx) = mpsc::channel();
+    let rt_clone = Arc::clone(rt);
+    thread::spawn(move || {
+        let result = rt_clone
+            .block_on(credits::fetch_credits(config.as_ref()))
+            .map(|d| (d.total_credits, d.total_usage))
+            .map_err(|e| e.to_string());
+        let _ = tx.send(result);
+    });
+    rx
+}
 
 /// Guard that restores terminal state on drop (including on panic).
 struct TerminalGuard;
@@ -52,7 +70,7 @@ impl Drop for TerminalGuard {
 }
 
 /// Run the TUI loop. Uses a dedicated Tokio runtime for async chat calls.
-pub fn run(config: Arc<Config>) -> io::Result<()> {
+pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
     use crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, enable_raw_mode};
     use ratatui::Terminal;
     use ratatui::backend::CrosstermBackend;
@@ -71,7 +89,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     );
 
     let model_name = models::resolve_model_display_name(&config.model_id);
-    let mut app = App::new(config.model_id.clone(), model_name);
+    let mut app = App::new(config.model_id.clone(), model_name, workspace);
     let mut api_messages: Option<Vec<Value>> = None;
     let mut pending_chat: Option<PendingChat> = None;
     let mut pending_model_fetch: Option<mpsc::Receiver<Result<Vec<models::ModelInfo>, String>>> =
@@ -81,19 +99,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
     execute!(io::stdout(), crossterm::event::EnableMouseCapture)?;
 
     // Start credits fetch in background
-    let mut pending_credits_fetch = {
-        let (credits_tx, credits_rx) = mpsc::channel();
-        let config = Arc::clone(&config);
-        let rt_clone = Arc::clone(&rt);
-        thread::spawn(move || {
-            let result = rt_clone
-                .block_on(credits::fetch_credits(config.as_ref()))
-                .map(|d| (d.total_credits, d.total_usage))
-                .map_err(|e| e.to_string());
-            let _ = credits_tx.send(result);
-        });
-        Some(credits_rx)
-    };
+    let mut pending_credits_fetch = Some(spawn_credits_fetch(Arc::clone(&config), &rt));
 
     loop {
         if let Some(ref credits_rx) = pending_credits_fetch
@@ -112,17 +118,7 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                 .credits_last_fetched_at
                 .is_some_and(|t| t.elapsed() >= CREDITS_REFRESH_INTERVAL)
         {
-            let config = Arc::clone(&config);
-            let rt_clone = Arc::clone(&rt);
-            let (tx, rx) = mpsc::channel();
-            pending_credits_fetch = Some(rx);
-            thread::spawn(move || {
-                let result = rt_clone
-                    .block_on(credits::fetch_credits(config.as_ref()))
-                    .map(|d| (d.total_credits, d.total_usage))
-                    .map_err(|e| e.to_string());
-                let _ = tx.send(result);
-            });
+            pending_credits_fetch = Some(spawn_credits_fetch(Arc::clone(&config), &rt));
         }
 
         if let Some(ref fetch_rx) = pending_model_fetch
@@ -177,12 +173,14 @@ pub fn run(config: Arc<Config>) -> io::Result<()> {
                 Event::Key(key) => {
                     let result = handlers::handle_key(
                         key,
-                        &mut app,
-                        &config,
-                        &mut api_messages,
-                        &mut pending_chat,
-                        &mut pending_model_fetch,
-                        &rt,
+                        handlers::HandleKeyContext {
+                            app: &mut app,
+                            config: &config,
+                            api_messages: &mut api_messages,
+                            pending_chat: &mut pending_chat,
+                            pending_model_fetch: &mut pending_model_fetch,
+                            rt: &rt,
+                        },
                     );
                     if result == HandleResult::Break {
                         chat_result::save_conversation_if_dirty(

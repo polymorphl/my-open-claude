@@ -29,8 +29,12 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+      # Build once (lib, bins, tests); test and clippy reuse artifacts
+      - name: Build
+        run: cargo build --all-targets
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings

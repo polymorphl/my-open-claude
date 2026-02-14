@@ -35,36 +35,28 @@ pub(super) fn ensure_data_dir() -> io::Result<std::path::PathBuf> {
     Ok(dir)
 }
 
-pub(super) fn load_index() -> IndexFile {
+/// Load the conversation index. Returns empty index when no data dir or file not found (first run).
+/// Propagates IO errors (permission, disk) and JSON parse errors.
+pub(super) fn load_index() -> io::Result<IndexFile> {
     let path = match index_path() {
         Some(p) => p,
         None => {
-            return IndexFile {
+            return Ok(IndexFile {
                 conversations: vec![],
-            };
+            });
         }
     };
     let data = match fs::read_to_string(&path) {
         Ok(d) => d,
-        Err(e) => {
-            eprintln!("Warning: could not read history index at {:?}: {}", path, e);
-            return IndexFile {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return Ok(IndexFile {
                 conversations: vec![],
-            };
+            });
         }
+        Err(e) => return Err(e),
     };
-    match serde_json::from_str(&data) {
-        Ok(index) => index,
-        Err(e) => {
-            eprintln!(
-                "Warning: invalid JSON in history index at {:?}: {}",
-                path, e
-            );
-            IndexFile {
-                conversations: vec![],
-            }
-        }
-    }
+    serde_json::from_str(&data)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
 pub(super) fn save_index(index: &IndexFile) -> io::Result<()> {
@@ -100,8 +92,11 @@ pub(super) fn write_conv_file(id: &str, messages: &[Value]) -> io::Result<()> {
     Ok(())
 }
 
-pub(super) fn remove_conv_file(id: &str) {
-    if let Some(p) = conv_path(id) {
-        let _ = fs::remove_file(p);
-    }
+/// Remove a conversation file by ID. Returns Ok(()) if removed or path unavailable; Err on IO failure.
+pub(super) fn remove_conv_file(id: &str) -> io::Result<()> {
+    let Some(p) = conv_path(id) else {
+        return Ok(());
+    };
+    fs::remove_file(&p)?;
+    Ok(())
 }

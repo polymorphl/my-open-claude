@@ -1,5 +1,7 @@
 //! Execute a single tool call from the agent loop.
 
+use std::path::Path;
+
 use serde_json::{Value, json};
 
 use crate::core::confirm::ConfirmDestructive;
@@ -10,6 +12,22 @@ use super::ChatResult;
 use super::ConfirmState;
 
 const WRITE_NAME: &str = "Write";
+
+/// File names treated as "init" targets (AGENT.md / AGENTS.md). Case-insensitive for Linux.
+/// Only one Write per session.
+const INIT_FILE_NAMES: &[&str] = &["agent.md", "agents.md"];
+
+fn is_init_file_path(file_path: &str) -> bool {
+    Path::new(file_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|n| {
+            INIT_FILE_NAMES
+                .iter()
+                .any(|&init| n.eq_ignore_ascii_case(init))
+        })
+        .unwrap_or(false)
+}
 const EDIT_NAME: &str = "Edit";
 const BASH_NAME: &str = "Bash";
 const READ_NAME: &str = "Read";
@@ -55,17 +73,77 @@ pub fn is_ask_mode(mode: &str) -> bool {
     mode.eq_ignore_ascii_case("ask")
 }
 
+/// Run a tool and format errors. Logs the underlying error before returning user-facing string.
+pub(crate) fn tool_result_string(res: Result<String, tools::ToolError>, tool_name: &str) -> String {
+    match res {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!("Tool {} error: {}", tool_name, e);
+            format!("Error: {}", e)
+        }
+    }
+}
+
+/// Outcome of executing the Bash tool: either output string or needs user confirmation.
+enum BashOutcome {
+    Output(String),
+    NeedsConfirmation(ConfirmState),
+}
+
+/// Execute Bash tool with destructive-command confirmation logic.
+fn execute_bash_tool(
+    tool: &dyn tools::Tool,
+    args: &Value,
+    id: &str,
+    mode: &str,
+    ctx: &ToolCallContext<'_>,
+) -> BashOutcome {
+    let command = match args.get("command").and_then(|v| v.as_str()) {
+        Some(c) => c,
+        None => return BashOutcome::Output("Error: missing command argument".to_string()),
+    };
+
+    if !tools::is_destructive(command) {
+        return BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME));
+    }
+
+    if let Some(cb) = ctx.confirm_destructive {
+        return if cb(command) {
+            BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME))
+        } else {
+            BashOutcome::Output(
+                "Command cancelled (destructive command not confirmed).".to_string(),
+            )
+        };
+    }
+
+    BashOutcome::NeedsConfirmation(ConfirmState {
+        messages: std::sync::Arc::clone(ctx.messages),
+        tool_log: std::sync::Arc::clone(ctx.tool_log),
+        tool_call_id: id.to_string(),
+        mode: mode.to_string(),
+        tools: ctx.tools_defs.to_vec(),
+        command: command.to_string(),
+    })
+}
+
+/// Context for executing a tool call (shared state and callbacks).
+pub(super) struct ToolCallContext<'a> {
+    pub confirm_destructive: &'a Option<ConfirmDestructive>,
+    pub tools_defs: &'a [Value],
+    pub messages: &'a mut std::sync::Arc<Vec<Value>>,
+    pub tool_log: &'a mut std::sync::Arc<Vec<String>>,
+    pub on_progress: Option<&'a (dyn Fn(&str) + Send + Sync)>,
+    /// When set, blocks repeated Write to AGENT.md/AGENTS.md to prevent infinite loops.
+    pub init_file_written: Option<&'a mut bool>,
+}
+
 /// Execute a single tool call. Returns `Some(ChatResult::NeedsConfirmation)` if destructive and needs confirmation.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn execute_tool_call(
     tool_call: &Value,
     tools_list: &[Box<dyn tools::Tool>],
     mode: &str,
-    confirm_destructive: &Option<ConfirmDestructive>,
-    tools_defs: &[Value],
-    messages: &mut std::sync::Arc<Vec<Value>>,
-    tool_log: &mut std::sync::Arc<Vec<String>>,
-    on_progress: Option<&(dyn Fn(&str) + Send)>,
+    ctx: &mut ToolCallContext<'_>,
 ) -> Result<Option<ChatResult>, ChatError> {
     let id = tool_call["id"].as_str().unwrap_or_default().to_string();
     let function = &tool_call["function"];
@@ -83,57 +161,56 @@ pub(super) fn execute_tool_call(
         .map(|t| t.args_preview(&args))
         .unwrap_or_default();
     let log_line = format!("→ {}: {}", name, args_preview);
-    std::sync::Arc::make_mut(tool_log).push(log_line.clone());
-    if let Some(ref progress) = on_progress {
+    std::sync::Arc::make_mut(ctx.tool_log).push(log_line.clone());
+    if let Some(ref progress) = ctx.on_progress {
         progress(&log_line);
     }
 
-    let result =
-        if is_ask_mode(mode) && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME) {
-            ASK_MODE_DISABLED.to_string()
-        } else {
-            match tools_list.iter().find(|t| t.name() == name) {
-                Some(tool) => {
-                    if name == BASH_NAME {
-                        if let Some(command) = args.get("command").and_then(|v| v.as_str()) {
-                            if tools::is_destructive(command) {
-                                if let Some(cb) = confirm_destructive {
-                                    let confirmed = cb(command);
-                                    if !confirmed {
-                                        "Command cancelled (destructive command not confirmed)."
-                                            .to_string()
-                                    } else {
-                                        tool.execute(&args)
-                                            .unwrap_or_else(|e| format!("Error: {}", e))
-                                    }
-                                } else {
-                                    return Ok(Some(ChatResult::NeedsConfirmation {
-                                        command: command.to_string(),
-                                        state: ConfirmState {
-                                            messages: std::sync::Arc::clone(messages),
-                                            tool_log: std::sync::Arc::clone(tool_log),
-                                            tool_call_id: id.clone(),
-                                            mode: mode.to_string(),
-                                            tools: tools_defs.to_vec(),
-                                            command: command.to_string(),
-                                        },
-                                    }));
-                                }
-                            } else {
-                                tool.execute(&args)
-                                    .unwrap_or_else(|e| format!("Error: {}", e))
-                            }
-                        } else {
-                            "Error: missing command argument".to_string()
-                        }
-                    } else {
-                        tool.execute(&args)
-                            .unwrap_or_else(|e| format!("Error: {}", e))
-                    }
-                }
-                None => format!("Error: unknown tool '{}'", name),
+    let result = if is_ask_mode(mode)
+        && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME)
+    {
+        ASK_MODE_DISABLED.to_string()
+    } else if name == WRITE_NAME {
+        let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+        if is_init_file_path(file_path)
+            && let Some(ref mut written) = ctx.init_file_written
+        {
+            if **written {
+                // Inject synthetic result to stop the Write loop; model will get this and should respond with summary.
+                let synthetic = "Already written this session. Do not call Write again. Provide your brief summary to the user now.";
+                std::sync::Arc::make_mut(ctx.messages).push(json!({
+                    "role": "tool",
+                    "tool_call_id": id,
+                    "content": synthetic
+                }));
+                return Ok(None);
             }
-        };
+            **written = true;
+        }
+        match tools_list.iter().find(|t| t.name() == name) {
+            Some(tool) => tool_result_string(tool.execute(&args), name),
+            None => format!("Error: unknown tool '{}'", name),
+        }
+    } else {
+        match tools_list.iter().find(|t| t.name() == name) {
+            Some(tool) => {
+                if name == BASH_NAME {
+                    match execute_bash_tool(tool.as_ref(), &args, &id, mode, ctx) {
+                        BashOutcome::Output(s) => s,
+                        BashOutcome::NeedsConfirmation(state) => {
+                            return Ok(Some(ChatResult::NeedsConfirmation {
+                                command: state.command.clone(),
+                                state,
+                            }));
+                        }
+                    }
+                } else {
+                    tool_result_string(tool.execute(&args), name)
+                }
+            }
+            None => format!("Error: unknown tool '{}'", name),
+        }
+    };
 
     // Truncate large tool outputs to stay within context budget.
     let result = match output_limit_for(name) {
@@ -141,7 +218,7 @@ pub(super) fn execute_tool_call(
         None => result,
     };
 
-    std::sync::Arc::make_mut(messages).push(json!({
+    std::sync::Arc::make_mut(ctx.messages).push(json!({
         "role": "tool",
         "tool_call_id": id,
         "content": result,

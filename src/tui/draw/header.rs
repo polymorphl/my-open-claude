@@ -98,10 +98,16 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
     } else {
         super::super::constants::LOGO_IDLE
     };
-    let count = history::list_conversations().len();
+    let count_display = match history::list_conversations() {
+        Ok(conv) => conv.len().to_string(),
+        Err(_) => "?".to_string(),
+    };
     let logo_line = Line::from(vec![
         Span::styled(format!("{} ", logo_symbol), Style::default().fg(accent)),
-        Span::styled(format!("{} ", count), Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{} ", count_display),
+            Style::default().fg(Color::DarkGray),
+        ),
     ]);
     f.render_widget(Paragraph::new(logo_line), logo_area);
 

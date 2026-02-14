@@ -4,6 +4,7 @@ use crate::core::history::ConversationMeta;
 use crate::core::llm::{ConfirmState, TokenUsage};
 use crate::core::message;
 use crate::core::models::ModelInfo;
+use crate::core::workspace::Workspace;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
 use serde_json::Value;
@@ -43,6 +44,8 @@ pub struct HistorySelectorState {
     pub filter: String,
     /// When renaming: (conversation_id, new_title_input).
     pub renaming: Option<(String, String)>,
+    /// Error loading conversations or from delete/rename.
+    pub error: Option<String>,
 }
 
 /// Scroll position: either a specific line index, or "at bottom" (follow new content).
@@ -62,10 +65,16 @@ pub struct App {
     pub(crate) messages: Vec<ChatMessage>,
     /// User input in the text field.
     pub(crate) input: String,
+    /// Cursor position in the input (byte index; used for Left/Right, insert, Backspace).
+    pub(crate) input_cursor: usize,
     pub(crate) scroll: ScrollPosition,
     pub(crate) last_max_scroll: usize,
     /// Index of the selected suggestion (Tab to cycle).
     pub selected_suggestion: usize,
+    /// Index of the selected slash command in the autocomplete list (when input starts with /).
+    pub selected_command_index: usize,
+    /// Mode to use when sending; set when user selects a slash command and inserts its template.
+    pub(crate) pending_command_mode: Option<String>,
     /// When set, show confirmation popup and ignore normal input until y/n.
     pub confirm_popup: Option<ConfirmPopup>,
     /// Model ID displayed in the header and used for chat (e.g. "anthropic/claude-haiku-4.5").
@@ -98,17 +107,22 @@ pub struct App {
     pub(crate) token_usage: Option<TokenUsage>,
     /// Context window size (in tokens) for the current model.
     pub(crate) context_length: u64,
+    /// Workspace (root, project type, AGENT.md) detected at startup.
+    pub workspace: Workspace,
 }
 
 impl App {
-    pub fn new(model_id: String, model_name: String) -> Self {
+    pub fn new(model_id: String, model_name: String, workspace: Workspace) -> Self {
         let context_length = crate::core::models::resolve_context_length(&model_id);
         Self {
             messages: vec![],
             input: String::new(),
+            input_cursor: 0,
             scroll: ScrollPosition::default(),
             last_max_scroll: 0,
             selected_suggestion: 0,
+            selected_command_index: 0,
+            pending_command_mode: None,
             confirm_popup: None,
             model_name,
             current_model_id: model_id,
@@ -125,6 +139,7 @@ impl App {
             is_streaming: false,
             token_usage: None,
             context_length,
+            workspace,
         }
     }
 
@@ -159,11 +174,37 @@ impl App {
     }
 
     /// Populate messages from API format (user/assistant only).
+    /// Malformed messages (e.g. unsupported content types) are surfaced as
+    /// "[Unsupported message format]" with a log warning instead of silently omitted.
     pub(crate) fn set_messages_from_api(&mut self, api_messages: &[Value]) {
         self.messages.clear();
         for msg in api_messages {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let content = message::extract_content(msg).unwrap_or_default();
+            let content = match message::extract_content(msg) {
+                Some(c) => c,
+                None => {
+                    let content_type = msg
+                        .get("content")
+                        .map(|c| {
+                            if c.is_string() {
+                                "string"
+                            } else if c.is_array() {
+                                "array"
+                            } else if c.is_object() {
+                                "object"
+                            } else {
+                                "other"
+                            }
+                        })
+                        .unwrap_or("missing");
+                    log::warn!(
+                        "Could not extract content from message: role={}, content_type={}",
+                        role,
+                        content_type
+                    );
+                    "[Unsupported message format]".to_string()
+                }
+            };
             match role {
                 "user" => self.messages.push(ChatMessage::User(content)),
                 "assistant" => self.messages.push(ChatMessage::Assistant(content)),

@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod config;
 pub mod confirm;
 pub mod credits;
@@ -9,3 +10,4 @@ pub mod paths;
 pub mod persistence;
 pub mod tools;
 pub mod util;
+pub mod workspace;

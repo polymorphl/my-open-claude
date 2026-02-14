@@ -11,9 +11,12 @@ pub(super) const MAX_TOOL_CALL_ARGS_BYTES: usize = 64 * 1024;
 
 /// Token usage reported by the API in the final streaming chunk.
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct TokenUsage {
+    /// Prompt tokens (from API; reserved for future detailed display).
+    #[allow(dead_code)]
     pub prompt_tokens: u64,
+    /// Completion tokens (from API; reserved for future detailed display).
+    #[allow(dead_code)]
     pub completion_tokens: u64,
     pub total_tokens: u64,
 }
