@@ -242,8 +242,11 @@ pub(crate) fn handle_main_input(
                 return super::HandleResult::Continue;
             }
             let pos = app.input_cursor.min(app.input.len());
-            app.input.insert(pos, c);
-            app.input_cursor = pos + 1;
+            // Only insert if pos is a valid char boundary (String::insert panics otherwise)
+            if pos == 0 || pos == app.input.len() || app.input.is_char_boundary(pos) {
+                app.input.insert(pos, c);
+                app.input_cursor = pos + 1;
+            }
             // Clamp selected_command_index when filter shrinks (user typed more chars)
             if app.input.starts_with('/') {
                 let new_commands = commands::filter_commands(slash_filter(app));

@@ -9,6 +9,10 @@ mod welcome_mascot;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use std::time::Instant;
 
 use crate::core::commands;
 
@@ -17,6 +21,10 @@ use super::constants::ACCENT;
 
 pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     let is_welcome = app.messages.is_empty();
+    if is_welcome {
+        app.history_area_rect = None;
+        app.message_line_ranges.clear();
+    }
 
     if is_welcome {
         let chunks = Layout::default()
@@ -62,5 +70,32 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
     if let Some(ref mut selector) = app.history_selector {
         history_selector_popup::draw_history_selector_popup(f, area, selector);
+    }
+
+    // Toast: top right, below header (y=2). Opaque background so it's visible over history.
+    if let Some(deadline) = app.copy_toast_until {
+        if deadline > Instant::now() {
+            const HEADER_HEIGHT: u16 = 2;
+            let toast_text = " Copied ";
+            let toast_width = toast_text.len() as u16 + 2;
+            let toast_height = 3u16; // borders + content
+            let toast_area = Rect {
+                x: area.x + area.width.saturating_sub(toast_width).saturating_sub(1),
+                y: area.y + HEADER_HEIGHT,
+                width: toast_width,
+                height: toast_height,
+            };
+            f.render_widget(Clear, toast_area);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(ACCENT))
+                .style(Style::default().bg(Color::Black));
+            let para = Paragraph::new(Line::from(toast_text))
+                .block(block)
+                .style(Style::default().fg(ACCENT).bg(Color::Black));
+            f.render_widget(para, toast_area);
+        } else {
+            app.copy_toast_until = None;
+        }
     }
 }

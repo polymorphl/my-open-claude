@@ -1,7 +1,7 @@
 //! Welcome screen: mascot ASCII art (owl in braille characters).
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{HorizontalAlignment, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -48,6 +48,6 @@ pub(crate) fn draw_mascot(f: &mut Frame, area: Rect) {
         .map(|s| Line::from(Span::styled(s.to_string(), Style::default().fg(ACCENT))))
         .collect();
 
-    let paragraph = Paragraph::new(lines).alignment(Alignment::Center);
+    let paragraph = Paragraph::new(lines).alignment(HorizontalAlignment::Center);
     f.render_widget(paragraph, area);
 }

@@ -93,8 +93,18 @@ pub struct App {
     pub(crate) credits_header_rect: Option<Rect>,
     /// When credits were last successfully fetched; for 30-min refresh.
     pub(crate) credits_last_fetched_at: Option<Instant>,
+    /// Credits fetch error (e.g. network) to display on welcome screen.
+    pub(crate) credits_fetch_error: Option<String>,
     /// Mouse is over credits area; used for cursor style.
     pub(crate) hovering_credits: bool,
+    /// (msg_idx, start_line, end_line) for each User/Assistant; updated each draw.
+    pub(crate) message_line_ranges: Vec<(usize, usize, usize)>,
+    /// Rect of history text area; for click hit testing.
+    pub(crate) history_area_rect: Option<Rect>,
+    /// Mouse is over a message block; used for cursor style.
+    pub(crate) hovering_message_block: bool,
+    /// When set, show "Copied!" toast until this instant.
+    pub(crate) copy_toast_until: Option<Instant>,
     /// Current conversation ID; None = new unsaved conversation.
     pub(crate) current_conversation_id: Option<String>,
     /// True if content has changed since last save.
@@ -132,7 +142,12 @@ impl App {
             credit_data: None,
             credits_header_rect: None,
             credits_last_fetched_at: None,
+            credits_fetch_error: None,
             hovering_credits: false,
+            message_line_ranges: vec![],
+            history_area_rect: None,
+            hovering_message_block: false,
+            copy_toast_until: None,
             current_conversation_id: None,
             dirty: false,
             escape_pending: false,
