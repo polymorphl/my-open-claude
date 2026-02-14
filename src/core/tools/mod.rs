@@ -22,6 +22,7 @@ pub use write::WriteTool;
 /// Default path for search tools (current directory).
 pub const DEFAULT_SEARCH_PATH: &str = ".";
 
+/// Returns the default search path for tools (typically the current directory ".").
 pub fn default_search_path() -> String {
     DEFAULT_SEARCH_PATH.to_string()
 }
@@ -57,9 +58,13 @@ pub type ToolError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Trait for LLM tools. Each tool provides its API definition and executes with typed arguments.
 pub trait Tool: Send + Sync {
+    /// Unique tool name (e.g. "Read", "Bash") used in API calls.
     fn name(&self) -> &'static str;
+    /// JSON schema for the API: type, function name, description, parameters.
     fn definition(&self) -> Value;
+    /// Short preview of arguments for display in progress/log (e.g. path, command).
     fn args_preview(&self, args: &Value) -> String;
+    /// Execute the tool with the given arguments. Returns output string or error.
     fn execute(&self, args: &Value) -> Result<String, ToolError>;
 }
 

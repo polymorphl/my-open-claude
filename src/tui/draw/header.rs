@@ -138,7 +138,7 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
         Style::default().fg(Color::DarkGray),
     ));
     f.render_widget(
-        Paragraph::new(model_line).alignment(ratatui::layout::Alignment::Right),
+        Paragraph::new(model_line).alignment(ratatui::layout::HorizontalAlignment::Right),
         model_area,
     );
 
@@ -162,7 +162,7 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
         }
     };
     f.render_widget(
-        Paragraph::new(tokens_display).alignment(ratatui::layout::Alignment::Right),
+        Paragraph::new(tokens_display).alignment(ratatui::layout::HorizontalAlignment::Right),
         tokens_area,
     );
 
@@ -180,7 +180,7 @@ pub(crate) fn draw_header(f: &mut Frame, app: &mut App, area: Rect, accent: Colo
             .add_modifier(Modifier::UNDERLINED),
     ));
     f.render_widget(
-        Paragraph::new(credits_line).alignment(ratatui::layout::Alignment::Right),
+        Paragraph::new(credits_line).alignment(ratatui::layout::HorizontalAlignment::Right),
         credits_area,
     );
     app.credits_header_rect = Some(credits_area);

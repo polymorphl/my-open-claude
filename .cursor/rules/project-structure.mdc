@@ -20,6 +20,9 @@ src/
 │   ├── paths.rs         # Config/cache/data dir paths
 │   ├── persistence.rs   # Persistence (last model used)
 │   ├── util.rs          # Generic helpers (filter_by_query)
+│   ├── commands.rs      # Slash commands definitions
+│   ├── workspace/       # Workspace detection
+│   │   └── mod.rs       # Root, project type, AGENTS.md loading
 │   ├── history/         # Conversation persistence
 │   │   ├── mod.rs       # Public API, sanitize, filter
 │   │   └── storage.rs   # Index/conv file I/O
@@ -47,7 +50,9 @@ src/
 │       └── write.rs     # File writing
 └── tui/                 # Text interface (ratatui)
     ├── mod.rs           # Main loop, credits, pending chat
-    ├── app.rs           # Application state
+    ├── app/             # Application state
+    │   ├── mod.rs       # App, popups state, ScrollPosition
+    │   └── messages.rs  # ChatMessage types
     ├── chat_result.rs   # handle_chat_result, save_conversation_if_dirty
     ├── constants.rs     # UI constants (suggestions, colors, scroll, poll)
     ├── shortcuts.rs     # Keyboard shortcut mapping
@@ -58,13 +63,17 @@ src/
     │   ├── confirm.rs   # Confirm popup (y/n)
     │   ├── history_selector.rs  # History picker
     │   ├── input.rs     # Main input, send, scroll
-    │   └── model_selector.rs    # Model picker popup
+    │   ├── model_selector.rs    # Model picker popup
+    │   └── shortcuts.rs  # History, NewConv, ModelSelector, Quit keys
     └── draw/            # Widget rendering
         ├── mod.rs       # Layout orchestration
         ├── header.rs    # Logo, title, model, credits
         ├── history.rs   # Chat history with scrollbar
         ├── history_selector_popup.rs
-        ├── input.rs     # Input block, suggestions, bottom bar
+        ├── input/       # Input block, suggestions, bottom bar
+        │   ├── mod.rs
+        │   ├── bar.rs   # Bottom bar
+        │   └── slash.rs # Slash command autocomplete
         ├── popups.rs    # Confirm popup, model selector popup
         └── welcome_mascot.rs
 ```
@@ -87,7 +96,7 @@ src/
 | Rendering, widgets, layout | `tui/draw/` |
 | Event handling (keyboard, mouse) | `tui/handlers/` |
 | Chat result handling, save logic | `tui/chat_result.rs` |
-| App state, message structures | `tui/app.rs` |
+| App state, message structures | `tui/app/` |
 | CLI parsing, orchestration | `main.rs` |
 
 ## Rust Conventions

@@ -105,9 +105,15 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
         if let Some(ref credits_rx) = pending_credits_fetch
             && let Ok(result) = credits_rx.try_recv()
         {
-            if let Ok((total, used)) = result {
-                app.credit_data = Some((total, used));
-                app.credits_last_fetched_at = Some(Instant::now());
+            match result {
+                Ok((total, used)) => {
+                    app.credit_data = Some((total, used));
+                    app.credits_last_fetched_at = Some(Instant::now());
+                    app.credits_fetch_error = None;
+                }
+                Err(e) => {
+                    app.credits_fetch_error = Some(e);
+                }
             }
             pending_credits_fetch = None;
         }

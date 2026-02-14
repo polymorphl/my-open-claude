@@ -1,15 +1,15 @@
-//! Welcome screen: mascot ASCII art (owl in braille characters).
+//! Welcome screen: mascot ASCII art
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{HorizontalAlignment, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::super::constants::ACCENT;
 
-/// Mascot ASCII art – owl in braille characters (29 lines).
-const OWL_ART: &[&str] = &[
+/// Mascot ASCII art
+const MASCOT_ART: &[&str] = &[
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣴⣶⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⠟⠉⠉⠙⠻⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⢀⣴⠟⠋⠀⠀⠀⠙⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⠃⠀⣠⡤⢄⡀⠀⠙⢷⣄⢀⣀⣀⣀⣾⢦⡿⣡⡶⣂⣀⣀⣴⠟⠁⠀⣠⠖⢋⠶⡀⢹⡇⠀⠀⠀⠀⠀⠀⠀⠀",
@@ -43,11 +43,11 @@ const OWL_ART: &[&str] = &[
 
 /// Draw the mascot in ACCENT color (static).
 pub(crate) fn draw_mascot(f: &mut Frame, area: Rect) {
-    let lines: Vec<Line> = OWL_ART
+    let lines: Vec<Line> = MASCOT_ART
         .iter()
         .map(|s| Line::from(Span::styled(s.to_string(), Style::default().fg(ACCENT))))
         .collect();
 
-    let paragraph = Paragraph::new(lines).alignment(Alignment::Center);
+    let paragraph = Paragraph::new(lines).alignment(HorizontalAlignment::Center);
     f.render_widget(paragraph, area);
 }

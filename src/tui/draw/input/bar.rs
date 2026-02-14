@@ -40,13 +40,13 @@ pub(crate) fn draw(f: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(Color::DarkGray),
     ));
     f.render_widget(
-        Paragraph::new(path_line).alignment(ratatui::layout::Alignment::Left),
+        Paragraph::new(path_line).alignment(ratatui::layout::HorizontalAlignment::Left),
         path_area,
     );
 
     let shortcuts = super::super::super::shortcuts::labels::bottom_bar(app.is_streaming);
     f.render_widget(
-        Paragraph::new(shortcuts).alignment(ratatui::layout::Alignment::Right),
+        Paragraph::new(shortcuts).alignment(ratatui::layout::HorizontalAlignment::Right),
         shortcuts_area,
     );
 }

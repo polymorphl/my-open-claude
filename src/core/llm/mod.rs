@@ -59,21 +59,33 @@ pub type OnContentChunk = Box<dyn Fn(&str) + Send + Sync>;
 /// Optional callbacks for chat: progress, streaming, cancellation.
 #[derive(Default)]
 pub struct ChatOptions {
+    /// Called when progress events occur (e.g. "Calling API...", "→ Bash: ls").
     pub on_progress: Option<OnProgress>,
+    /// Called for each streamed content chunk (text only).
     pub on_content_chunk: Option<OnContentChunk>,
+    /// When cancelled, the request is aborted.
     pub cancel_token: Option<CancellationToken>,
 }
 
 /// Parameters for starting a new chat.
 pub struct ChatRequest<'a> {
+    /// API and application configuration.
     pub config: &'a Config,
+    /// Model ID (e.g. "anthropic/claude-haiku-4.5").
     pub model: &'a str,
+    /// User prompt.
     pub prompt: &'a str,
+    /// Mode: "Ask" (read-only tools) or "Build" (all tools).
     pub mode: &'a str,
+    /// Model context window length (tokens).
     pub context_length: u64,
+    /// Callback for destructive command confirmation (CLI mode). TUI uses popup instead.
     pub confirm_destructive: Option<crate::core::confirm::ConfirmDestructive>,
+    /// Previous conversation messages to resume from (API format).
     pub previous_messages: Option<Vec<Value>>,
+    /// Optional progress, streaming, and cancellation callbacks.
     pub options: ChatOptions,
+    /// Workspace root, project type, optional AGENTS.md content.
     pub workspace: &'a Workspace,
 }
 
@@ -148,6 +160,13 @@ pub async fn chat(req: ChatRequest<'_>) -> Result<ChatResult, ChatError> {
 }
 
 /// Resume the chat loop after user confirmed or cancelled a destructive command.
+///
+/// Call when the user answered y/n to the destructive command confirmation popup.
+///
+/// # Arguments
+///
+/// * `state` - Internal state from `ChatResult::NeedsConfirmation`, required to continue the loop.
+/// * `confirmed` - `true` if user accepted, `false` if cancelled (sends "Command cancelled" to model).
 pub async fn chat_resume(
     config: &Config,
     model: &str,

@@ -45,7 +45,7 @@ pub(crate) fn draw_confirm_popup(f: &mut Frame, area: Rect, command: &str) {
     ];
     let paragraph = Paragraph::new(text)
         .block(block)
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(ratatui::layout::HorizontalAlignment::Center);
 
     f.render_widget(Clear, popup_rect);
     f.render_widget(paragraph, popup_rect);

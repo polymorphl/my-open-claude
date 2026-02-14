@@ -25,6 +25,21 @@ const WELCOME_INPUT_WIDTH: u16 = 64;
 
 pub(crate) use bar::draw as draw_bottom_bar;
 
+const ERROR_LINES: u16 = 2;
+
+fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
+    if s.chars().count() <= max_width {
+        s.to_string()
+    } else {
+        format!(
+            "{}…",
+            s.chars()
+                .take(max_width.saturating_sub(1))
+                .collect::<String>()
+        )
+    }
+}
+
 pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     let in_slash = app.input.starts_with('/');
     let filter = app.input.get(1..).unwrap_or("");
@@ -34,18 +49,45 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         0
     };
+    let has_error = app.credits_fetch_error.is_some();
     let base = 1 + INPUT_LINES + 1 + 1;
+    let error_height = if has_error { ERROR_LINES } else { 0u16 };
     let mascot_height = if ac_height > 0 {
-        (35u16.saturating_sub(ac_height).saturating_sub(base)).max(10)
+        (35u16
+            .saturating_sub(ac_height)
+            .saturating_sub(base)
+            .saturating_sub(error_height))
+        .max(10)
     } else {
-        35u16.saturating_sub(base)
+        (35u16.saturating_sub(base).saturating_sub(error_height)).max(10)
     };
 
     let constraints: &[Constraint] = if ac_height > 0 {
+        if has_error {
+            &[
+                Constraint::Length(mascot_height),
+                Constraint::Length(error_height),
+                Constraint::Length(1),
+                Constraint::Length(ac_height),
+                Constraint::Length(INPUT_LINES),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ]
+        } else {
+            &[
+                Constraint::Length(mascot_height),
+                Constraint::Length(1),
+                Constraint::Length(ac_height),
+                Constraint::Length(INPUT_LINES),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ]
+        }
+    } else if has_error {
         &[
             Constraint::Length(mascot_height),
+            Constraint::Length(error_height),
             Constraint::Length(1),
-            Constraint::Length(ac_height),
             Constraint::Length(INPUT_LINES),
             Constraint::Length(1),
             Constraint::Length(1),
@@ -65,18 +107,30 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints(constraints)
         .split(area);
 
-    let input_area_outer = if ac_height > 0 {
-        inner_chunks[3]
+    let (input_area_outer, suggestions_area, error_area) = if ac_height > 0 {
+        if has_error {
+            (inner_chunks[4], inner_chunks[5], Some(inner_chunks[1]))
+        } else {
+            (inner_chunks[3], inner_chunks[4], None)
+        }
+    } else if has_error {
+        (inner_chunks[3], inner_chunks[4], Some(inner_chunks[1]))
     } else {
-        inner_chunks[2]
-    };
-    let suggestions_area = if ac_height > 0 {
-        inner_chunks[4]
-    } else {
-        inner_chunks[3]
+        (inner_chunks[2], inner_chunks[3], None)
     };
 
     welcome_mascot::draw_mascot(f, inner_chunks[0]);
+
+    if let (Some(area), Some(err)) = (error_area, app.credits_fetch_error.as_ref()) {
+        let err_line = Line::from(Span::styled(
+            truncate_with_ellipsis(err, area.width as usize),
+            Style::default().fg(Color::Red),
+        ));
+        f.render_widget(
+            Paragraph::new(err_line).alignment(ratatui::layout::HorizontalAlignment::Center),
+            area,
+        );
+    }
 
     let input_width = WELCOME_INPUT_WIDTH.min(area.width);
     let input_area = Rect {
@@ -116,7 +170,8 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
     f.render_widget(
-        Paragraph::new(Line::from(suggestion_spans)).alignment(ratatui::layout::Alignment::Center),
+        Paragraph::new(Line::from(suggestion_spans))
+            .alignment(ratatui::layout::HorizontalAlignment::Center),
         suggestions_area,
     );
 }
@@ -201,7 +256,8 @@ fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
     f.render_widget(
-        Paragraph::new(Line::from(suggestion_spans)).alignment(ratatui::layout::Alignment::Center),
+        Paragraph::new(Line::from(suggestion_spans))
+            .alignment(ratatui::layout::HorizontalAlignment::Center),
         area,
     );
 }
