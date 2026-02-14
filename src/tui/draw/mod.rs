@@ -73,11 +73,15 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     // Toast: top right, below header (y=2). Opaque background so it's visible over history.
-    if let Some(deadline) = app.copy_toast_until {
-        if deadline > Instant::now() {
+    draw_toast(f, area, " Copied ", &mut app.copy_toast_until);
+    draw_toast(f, area, " Save failed ", &mut app.save_error_toast_until);
+}
+
+fn draw_toast(f: &mut Frame, area: Rect, text: &str, deadline: &mut Option<Instant>) {
+    if let Some(d) = *deadline {
+        if d > Instant::now() {
             const HEADER_HEIGHT: u16 = 2;
-            let toast_text = " Copied ";
-            let toast_width = toast_text.len() as u16 + 2;
+            let toast_width = text.len() as u16 + 2;
             let toast_height = 3u16; // borders + content
             let toast_area = Rect {
                 x: area.x + area.width.saturating_sub(toast_width).saturating_sub(1),
@@ -90,12 +94,12 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(ACCENT))
                 .style(Style::default().bg(Color::Black));
-            let para = Paragraph::new(Line::from(toast_text))
+            let para = Paragraph::new(Line::from(text))
                 .block(block)
                 .style(Style::default().fg(ACCENT).bg(Color::Black));
             f.render_widget(para, toast_area);
         } else {
-            app.copy_toast_until = None;
+            *deadline = None;
         }
     }
 }

@@ -196,6 +196,11 @@ pub fn prune_if_needed(config: &Config) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
+    use crate::core::config::Config;
+    use async_openai::config::OpenAIConfig;
+
     use super::*;
 
     #[test]
@@ -291,5 +296,117 @@ mod tests {
         let out = filter_conversations(&convs, "abc");
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "abc-123");
+    }
+
+    /// Config for tests (no API key needed for save/load).
+    fn test_config() -> Config {
+        Config {
+            openai_config: OpenAIConfig::new(),
+            model_id: "test".to_string(),
+            base_url: "https://test".to_string(),
+            api_key: "test".to_string(),
+            max_conversations: 10,
+        }
+    }
+
+    /// Serializes persistence tests that use the global TEST_DATA_DIR env var.
+    static PERSISTENCE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard(&'static str);
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: Test env isolation; no other threads access this var during test.
+            unsafe {
+                std::env::remove_var(self.0);
+            }
+        }
+    }
+
+    #[test]
+    fn save_conversation_empty_messages_new_returns_err() {
+        let _lock = PERSISTENCE_TEST_LOCK.lock().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        unsafe {
+            std::env::set_var(
+                "TEST_DATA_DIR",
+                tmp.path().join("conversations"),
+            );
+        }
+        let _guard = EnvGuard("TEST_DATA_DIR");
+
+        let config = test_config();
+        let messages: Vec<Value> = vec![];
+        let result = save_conversation(None, "title", &messages, &config);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn save_then_load_roundtrip() {
+        let _lock = PERSISTENCE_TEST_LOCK.lock().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let data_dir = tmp.path().join("conversations");
+        unsafe {
+            std::env::set_var("TEST_DATA_DIR", &data_dir);
+        }
+        let _guard = EnvGuard("TEST_DATA_DIR");
+
+        let config = test_config();
+        let messages = vec![
+            serde_json::json!({"role": "user", "content": "Hello"}),
+            serde_json::json!({"role": "assistant", "content": "Hi"}),
+        ];
+
+        let id =
+            save_conversation(None, "Test Chat", &messages, &config).expect("save should succeed");
+        assert!(!id.is_empty());
+
+        let loaded = load_conversation(&id).expect("load should return Some");
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0]["role"], "user");
+        assert_eq!(loaded[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn load_conversation_nonexistent_returns_none() {
+        let _lock = PERSISTENCE_TEST_LOCK.lock().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        unsafe {
+            std::env::set_var(
+                "TEST_DATA_DIR",
+                tmp.path().join("conversations"),
+            );
+        }
+        let _guard = EnvGuard("TEST_DATA_DIR");
+
+        let loaded = load_conversation("nonexistent-id-12345");
+        assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn load_conversation_invalid_json_returns_none() {
+        let _lock = PERSISTENCE_TEST_LOCK.lock().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let data_dir = tmp.path().join("conversations");
+        std::fs::create_dir_all(&data_dir).expect("create dir");
+        unsafe {
+            std::env::set_var("TEST_DATA_DIR", &data_dir);
+        }
+        let _guard = EnvGuard("TEST_DATA_DIR");
+
+        // Save valid conversation first
+        let config = test_config();
+        let messages = vec![serde_json::json!({"role": "user", "content": "Hi"})];
+        let id = save_conversation(None, "Title", &messages, &config).expect("save ok");
+
+        // Corrupt the file with invalid JSON
+        let conv_path = data_dir.join(format!("conv_{}.json", id));
+        std::fs::write(&conv_path, "not valid json {{{").expect("write");
+
+        let loaded = load_conversation(&id);
+        assert!(loaded.is_none());
     }
 }
