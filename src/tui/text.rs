@@ -5,6 +5,14 @@ use ratatui::text::Span;
 
 use super::constants::ACCENT;
 
+/// Normalize Unicode symbols to ASCII equivalents in code blocks.
+/// LLMs sometimes output ≠, ≥, ≤ etc. instead of !=, >=, <= — this restores valid syntax.
+pub(super) fn normalize_code_operators(s: &str) -> String {
+    s.replace('\u{2260}', "!=")  // ≠ -> !=
+        .replace('\u{2265}', ">=")  // ≥ -> >=
+        .replace('\u{2264}', "<=")  // ≤ -> <=
+}
+
 /// Segment of a message: either plain text or a fenced code block.
 #[derive(Debug, Clone)]
 pub(super) enum MessageSegment<'a> {
@@ -38,11 +46,17 @@ pub(super) fn parse_message_segments(content: &str) -> Vec<MessageSegment<'_>> {
                 } else {
                     ""
                 };
-                match rest.find("\n```") {
-                    Some(end) => {
-                        let code = &rest[..end];
+                // Closing ``` can be: "\n```" (on its own line) or "```" (no newline before)
+                let end = rest.find("\n```").or_else(|| rest.find("```"));
+                match end {
+                    Some(pos) => {
+                        let (code, after) = if rest.get(pos..).map_or(false, |s| s.starts_with("\n```")) {
+                            (&rest[..pos], &rest[pos + 4..])
+                        } else {
+                            (&rest[..pos], &rest[pos + 3..])
+                        };
                         segments.push(MessageSegment::CodeBlock { lang, code });
-                        rest = &rest[end + 4..];
+                        rest = after;
                     }
                     None => {
                         segments.push(MessageSegment::CodeBlock { lang, code: rest });

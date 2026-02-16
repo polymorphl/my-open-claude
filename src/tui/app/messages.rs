@@ -18,7 +18,12 @@ impl App {
     /// Populate messages from persisted format (user, assistant, tool_log).
     /// Malformed messages (e.g. unsupported content types) are surfaced as
     /// "[Unsupported message format]" with a log warning instead of silently omitted.
-    pub(crate) fn set_messages_from_api(&mut self, api_messages: &[Value]) {
+    /// If `fallback_timestamp` is set, it is used for messages that lack a timestamp (old format).
+    pub(crate) fn set_messages_from_api(
+        &mut self,
+        api_messages: &[Value],
+        fallback_timestamp: Option<u64>,
+    ) {
         self.messages.clear();
         self.message_timestamps.clear();
         for msg in api_messages {
@@ -52,7 +57,8 @@ impl App {
                     };
                     let timestamp = msg
                         .get("timestamp")
-                        .and_then(|t| t.as_u64());
+                        .and_then(|t| t.as_u64())
+                        .or(fallback_timestamp);
                     if role == "user" {
                         self.messages.push(ChatMessage::User(content));
                         self.message_timestamps.push(timestamp);

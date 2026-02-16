@@ -9,8 +9,10 @@ use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarStat
 
 use super::super::app::{App, ChatMessage};
 use super::super::constants::{ACCENT, ACCENT_SECONDARY};
+use super::super::syntax::{highlight_code_line, slice_spans_by_range};
 use super::super::text::{
-    MessageSegment, parse_markdown_inline, parse_message_segments, wrap_message,
+    normalize_code_operators, MessageSegment, parse_markdown_inline, parse_message_segments,
+    wrap_message,
 };
 
 /// Repeat a character to fill width (approximate; chars may have different display widths).
@@ -174,12 +176,27 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
                     Span::styled(code_header_line, Style::default().fg(ACCENT_SECONDARY)),
                 ]));
                 for code_line in code.split('\n') {
-                    for chunk in wrap_message(code_line, code_inner_width) {
-                        lines.push(Line::from(vec![
+                    let normalized = normalize_code_operators(code_line);
+                    let line_spans = highlight_code_line(lang, &normalized);
+                    let mut offset = 0;
+                    for chunk in wrap_message(&normalized, code_inner_width) {
+                        let chunk_len = chunk.chars().count();
+                        let spans_slice =
+                            slice_spans_by_range(&line_spans, offset, offset + chunk_len);
+                        offset += chunk_len;
+                        let mut line_content = vec![
                             Span::styled("│ ", border_style),
                             Span::styled("│ ", Style::default().fg(ACCENT_SECONDARY)),
-                            Span::styled(chunk, Style::default().fg(ACCENT_SECONDARY)),
-                        ]));
+                        ];
+                        if spans_slice.is_empty() {
+                            line_content.push(Span::styled(
+                                chunk,
+                                Style::default().fg(ACCENT_SECONDARY),
+                            ));
+                        } else {
+                            line_content.extend(spans_slice);
+                        }
+                        lines.push(Line::from(line_content));
                     }
                 }
                 let code_footer =

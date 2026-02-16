@@ -60,7 +60,12 @@ pub(super) fn handle_history_selector(
         }
         history_selector::HistorySelectorAction::Load { id } => {
             if let Some(persisted) = history::load_conversation(&id) {
-                app.set_messages_from_api(&persisted);
+                let fallback_ts = selector
+                    .conversations
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|m| m.updated_at);
+                app.set_messages_from_api(&persisted, fallback_ts);
                 app.set_conversation_id(Some(id.clone()));
                 app.scroll = crate::tui::app::ScrollPosition::Bottom;
                 let api_only = history::api_messages_from_persisted(&persisted);

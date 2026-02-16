@@ -106,7 +106,7 @@ pub async fn chat(req: ChatRequest<'_>) -> Result<ChatResult, ChatError> {
         .unwrap_or_else(|| "unknown".to_string());
 
     let mut content = format!(
-        "Workspace root: {}\nProject type: {}\nUse the workspace root as the default base path for Read, Write, Grep, ListDir, Glob, and Edit when the user does not specify a path.",
+        "Respond in the same language as the user. If they write in French, respond in French; if in English, respond in English; match their language.\n\nWorkspace root: {}\nProject type: {}\nUse the workspace root as the default base path for Read, Write, Grep, ListDir, Glob, and Edit when the user does not specify a path.",
         root, project_type
     );
 

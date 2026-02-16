@@ -249,7 +249,8 @@ pub(crate) fn handle_main_input(
             // Only insert if pos is a valid char boundary (String::insert panics otherwise)
             if pos == 0 || pos == app.input.len() || app.input.is_char_boundary(pos) {
                 app.input.insert(pos, c);
-                app.input_cursor = pos + 1;
+                // Advance by byte length, not 1 (multi-byte chars: é, emoji, etc.)
+                app.input_cursor = pos + c.len_utf8();
             }
             // Clamp selected_command_index when filter shrinks (user typed more chars)
             if app.input.starts_with('/') {

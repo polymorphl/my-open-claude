@@ -4,6 +4,7 @@ mod app;
 mod chat_result;
 mod constants;
 mod draw;
+mod syntax;
 mod handlers;
 mod shortcuts;
 mod text;
@@ -193,6 +194,20 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
             match event::read()? {
                 Event::Mouse(mouse) => {
                     let _ = handlers::handle_mouse(mouse, &mut app);
+                }
+                Event::Paste(pasted) => {
+                    // Insert pasted text at cursor when input has focus (no popup open).
+                    let input_focus = app.confirm_popup.is_none()
+                        && app.model_selector.is_none()
+                        && app.history_selector.is_none();
+                    if input_focus {
+                        let cursor = app.input_cursor.min(app.input.len());
+                        let cursor_byte = app.input.floor_char_boundary(cursor);
+                        let before = app.input[..cursor_byte].to_string();
+                        let after = app.input[cursor_byte..].to_string();
+                        app.input = before + &pasted + &after;
+                        app.input_cursor = cursor_byte + pasted.len();
+                    }
                 }
                 Event::Key(key) => {
                     // When Esc would start Option+key (meta), drain: terminals (Ghostty, etc.) send
