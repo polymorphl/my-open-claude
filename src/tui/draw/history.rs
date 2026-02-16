@@ -53,9 +53,7 @@ fn add_tool_log_lines(lines: &mut Vec<Line<'static>>, s: &str, content_width: us
 
         let mut first_line = true;
         for chunk in wrap_message(args, args_width.max(1)) {
-            let mut spans = vec![
-                Span::styled(prefix.to_string(), marker_style),
-            ];
+            let mut spans = vec![Span::styled(prefix.to_string(), marker_style)];
             if first_line {
                 spans.push(Span::styled(header.to_string(), tool_style));
                 first_line = false;
@@ -75,7 +73,9 @@ fn add_tool_log_lines(lines: &mut Vec<Line<'static>>, s: &str, content_width: us
             ]));
         }
     } else {
-        for chunk in super::super::text::wrap_message(s, content_width.saturating_sub(prefix_len).max(1)) {
+        for chunk in
+            super::super::text::wrap_message(s, content_width.saturating_sub(prefix_len).max(1))
+        {
             lines.push(Line::from(vec![
                 Span::styled(prefix.to_string(), marker_style),
                 Span::styled(format!("{} ", chunk), args_style),
@@ -111,11 +111,14 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
     let start = lines.len();
 
     // Top border: "┌─ Label ───...──┐" or "┌─ Label 14:32 ───...──┐"
-    let time_suffix = p.timestamp.map(|unix_secs| {
-        let hour = (unix_secs % 86400) / 3600;
-        let min = (unix_secs % 3600) / 60;
-        format!(" {:02}:{:02}", hour, min)
-    }).unwrap_or_default();
+    let time_suffix = p
+        .timestamp
+        .map(|unix_secs| {
+            let hour = (unix_secs % 86400) / 3600;
+            let min = (unix_secs % 3600) / 60;
+            format!(" {:02}:{:02}", hour, min)
+        })
+        .unwrap_or_default();
     let top_label = if time_suffix.is_empty() {
         format!("┌─ {} ", p.label)
     } else {

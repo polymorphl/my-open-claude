@@ -104,7 +104,8 @@ impl App {
         match self.messages.last_mut() {
             Some(ChatMessage::Assistant(s)) => s.push_str(chunk),
             _ => {
-                self.messages.push(ChatMessage::Assistant(chunk.to_string()));
+                self.messages
+                    .push(ChatMessage::Assistant(chunk.to_string()));
                 self.message_timestamps.push(Some(unix_timestamp_secs()));
             }
         }

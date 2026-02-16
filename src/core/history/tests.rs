@@ -145,6 +145,7 @@ fn test_config() -> Config {
         base_url: "https://test".to_string(),
         api_key: "test".to_string(),
         max_conversations: 10,
+        show_timestamps: false,
     }
 }
 

@@ -3,7 +3,9 @@
 [![CI](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml/badge.svg)](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Polyform%20Noncommercial%201.0.0-blue)](LICENSE)
 
-![my-open-claude TUI](screenshot.png)
+| Welcome | Conversation |
+|---------|--------------|
+| ![Welcome screen](screenshots/welcome.png) | ![Chat conversation](screenshots/conversation.png) |
 
 LLM-powered coding assistant written in Rust. It understands code and performs actions through tool calls, with a CLI and an interactive TUI chat mode.
 

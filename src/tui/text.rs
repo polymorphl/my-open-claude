@@ -72,16 +72,17 @@ pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
     }
     // Bullet list: - or * at line start
     if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-        spans.push(Span::styled(
-            "• ",
-            Style::default().fg(ACCENT),
-        ));
+        spans.push(Span::styled("• ", Style::default().fg(ACCENT)));
         spans.extend(parse_markdown_inline_inner(trimmed.get(2..).unwrap_or("")));
         return spans;
     }
     // Table row: | cell1 | cell2 |
     if trimmed.starts_with('|') && trimmed.contains('|') {
-        let cells: Vec<&str> = trimmed.split('|').map(|c| c.trim()).filter(|c| !c.is_empty()).collect();
+        let cells: Vec<&str> = trimmed
+            .split('|')
+            .map(|c| c.trim())
+            .filter(|c| !c.is_empty())
+            .collect();
         if !cells.is_empty() {
             let mut first = true;
             for cell in cells {
@@ -147,7 +148,13 @@ fn parse_markdown_inline_inner(s: &str) -> Vec<Span<'static>> {
             (None, Some(c), Some(l)) => (if c <= l { 1 } else { 2 }, c.min(l)),
             (Some(b), Some(c), Some(l)) => {
                 let p = b.min(c).min(l);
-                let which = if p == b { 0 } else if p == c { 1 } else { 2 };
+                let which = if p == b {
+                    0
+                } else if p == c {
+                    1
+                } else {
+                    2
+                };
                 (which, p)
             }
             (None, None, None) => {
