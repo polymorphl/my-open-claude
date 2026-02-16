@@ -60,7 +60,10 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
             .saturating_sub(error_height))
         .max(4)
     } else {
-        (total_height.saturating_sub(base).saturating_sub(error_height)).max(4)
+        (total_height
+            .saturating_sub(base)
+            .saturating_sub(error_height))
+        .max(4)
     };
 
     let constraints: &[Constraint] = if ac_height > 0 {
@@ -142,7 +145,11 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     if ac_height > 0 {
-        let ac_area = if has_error { inner_chunks[3] } else { inner_chunks[2] };
+        let ac_area = if has_error {
+            inner_chunks[3]
+        } else {
+            inner_chunks[2]
+        };
         // Welcome mode: keep centered narrow layout to avoid misalignment with mascot/input.
         let ac_rect = Rect {
             x: area.x + area.width.saturating_sub(input_width) / 2,
@@ -194,9 +201,7 @@ fn wrapped_lines(text: &str, width: u16) -> Vec<String> {
 }
 
 fn input_has_focus(app: &App) -> bool {
-    app.confirm_popup.is_none()
-        && app.model_selector.is_none()
-        && app.history_selector.is_none()
+    app.confirm_popup.is_none() && app.model_selector.is_none() && app.history_selector.is_none()
 }
 
 fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {
