@@ -223,6 +223,7 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
         .content_length(total_lines);
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .thumb_symbol("█")
+        .thumb_style(Style::default().fg(ACCENT_SECONDARY))
         .track_symbol(Some("│"));
     f.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
 }

@@ -23,7 +23,8 @@ pub(super) fn draw(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let total = filtered.len();
-    let visible = super::AUTOCOMPLETE_VISIBLE_LINES as usize;
+    // Inner height: area minus top/bottom borders (Borders::ALL uses 1 line each)
+    let visible = (area.height.saturating_sub(2) as usize).max(1).min(total);
     let scroll_start = app
         .selected_command_index
         .saturating_sub(visible.saturating_sub(1))
@@ -52,10 +53,16 @@ pub(super) fn draw(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    // Slightly elevated background so the autocomplete feels like a distinct floating panel.
+    const PANEL_BG: Color = Color::Rgb(28, 32, 36);
     let block = Block::default()
-        .borders(Borders::LEFT | Borders::RIGHT)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray))
+        .style(Style::default().bg(PANEL_BG));
     let inner = block.inner(area);
     f.render_widget(block, area);
-    f.render_widget(Paragraph::new(lines), inner);
+    f.render_widget(
+        Paragraph::new(lines).style(Style::default().bg(PANEL_BG)),
+        inner,
+    );
 }

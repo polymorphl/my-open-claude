@@ -41,9 +41,26 @@ const MASCOT_ART: &[&str] = &[
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠙⠛⠛⠛⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
 ];
 
-/// Draw the mascot in ACCENT color (static).
+/// Height threshold below which a centered slice of the mascot is shown.
+const COMPACT_MASCOT_HEIGHT: u16 = 14;
+
+fn mascot_lines_for_height(height: u16) -> &'static [&'static str] {
+    if height < COMPACT_MASCOT_HEIGHT {
+        let n = MASCOT_ART.len();
+        let h = height as usize;
+        let start = n.saturating_sub(h) / 2;
+        let end = (start + h).min(n);
+        &MASCOT_ART[start..end]
+    } else {
+        MASCOT_ART
+    }
+}
+
+/// Draw the mascot in ACCENT color. Uses a centered slice on small terminals.
 pub(crate) fn draw_mascot(f: &mut Frame, area: Rect) {
-    let lines: Vec<Line> = MASCOT_ART
+    let art = mascot_lines_for_height(area.height);
+
+    let lines: Vec<Line> = art
         .iter()
         .map(|s| Line::from(Span::styled(s.to_string(), Style::default().fg(ACCENT))))
         .collect();

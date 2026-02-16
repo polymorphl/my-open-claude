@@ -27,12 +27,13 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     if is_welcome {
+        let center_height = 35.min(area.height.saturating_sub(4));
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(2),
                 Constraint::Min(0),
-                Constraint::Length(35),
+                Constraint::Length(center_height),
                 Constraint::Min(0),
                 Constraint::Length(2),
             ])

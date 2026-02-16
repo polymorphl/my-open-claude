@@ -52,14 +52,15 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     let has_error = app.credits_fetch_error.is_some();
     let base = 1 + INPUT_LINES + 1 + 1;
     let error_height = if has_error { ERROR_LINES } else { 0u16 };
+    let total_height = area.height;
     let mascot_height = if ac_height > 0 {
-        (35u16
+        (total_height
             .saturating_sub(ac_height)
             .saturating_sub(base)
             .saturating_sub(error_height))
-        .max(10)
+        .max(4)
     } else {
-        (35u16.saturating_sub(base).saturating_sub(error_height)).max(10)
+        (total_height.saturating_sub(base).saturating_sub(error_height)).max(4)
     };
 
     let constraints: &[Constraint] = if ac_height > 0 {
@@ -141,7 +142,7 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     if ac_height > 0 {
-        let ac_area = inner_chunks[2];
+        let ac_area = if has_error { inner_chunks[3] } else { inner_chunks[2] };
         // Welcome mode: keep centered narrow layout to avoid misalignment with mascot/input.
         let ac_rect = Rect {
             x: area.x + area.width.saturating_sub(input_width) / 2,
@@ -154,26 +155,32 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
 
     draw_input_block(f, app, input_area);
 
-    let suggestion_spans: Vec<Span> = SUGGESTIONS
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let selected = i == app.selected_suggestion;
-            Span::styled(
-                format!(" {} ", s),
-                if selected {
-                    Style::default().fg(Color::Black).bg(ACCENT)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                },
-            )
-        })
-        .collect();
+    let suggestion_spans = build_suggestion_spans(app);
     f.render_widget(
         Paragraph::new(Line::from(suggestion_spans))
             .alignment(ratatui::layout::HorizontalAlignment::Center),
         suggestions_area,
     );
+}
+
+fn build_suggestion_spans(app: &App) -> Vec<Span<'_>> {
+    let mut spans: Vec<Span> = Vec::new();
+    let sep = Span::styled(" · ", Style::default().fg(Color::DarkGray));
+    for (i, s) in SUGGESTIONS.iter().enumerate() {
+        if i > 0 {
+            spans.push(sep.clone());
+        }
+        let selected = i == app.selected_suggestion;
+        spans.push(Span::styled(
+            format!(" {} ", s),
+            if selected {
+                Style::default().fg(Color::Black).bg(ACCENT)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            },
+        ));
+    }
+    spans
 }
 
 fn wrapped_lines(text: &str, width: u16) -> Vec<String> {
@@ -186,10 +193,21 @@ fn wrapped_lines(text: &str, width: u16) -> Vec<String> {
         .collect()
 }
 
+fn input_has_focus(app: &App) -> bool {
+    app.confirm_popup.is_none()
+        && app.model_selector.is_none()
+        && app.history_selector.is_none()
+}
+
 fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {
+    let border_style = if input_has_focus(app) {
+        Style::default().fg(ACCENT)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
     let input_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(border_style);
     let inner = input_block.inner(input_area);
     let inner_height = inner.height as usize;
 
@@ -243,21 +261,7 @@ fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {
 }
 
 fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
-    let suggestion_spans: Vec<Span> = SUGGESTIONS
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let selected = i == app.selected_suggestion;
-            Span::styled(
-                format!(" {} ", s),
-                if selected {
-                    Style::default().fg(Color::Black).bg(ACCENT)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                },
-            )
-        })
-        .collect();
+    let suggestion_spans = build_suggestion_spans(app);
     f.render_widget(
         Paragraph::new(Line::from(suggestion_spans))
             .alignment(ratatui::layout::HorizontalAlignment::Center),

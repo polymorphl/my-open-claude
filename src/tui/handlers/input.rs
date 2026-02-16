@@ -49,12 +49,14 @@ pub(crate) fn handle_main_input(
     match (key_code, key_modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => super::HandleResult::Break,
 
-        // Slash autocomplete: Up/Down/Tab navigate commands
+        // Slash autocomplete: Up/Down/Tab navigate commands (wrap around at edges)
         (KeyCode::Tab, KeyModifiers::SHIFT) if in_slash_mode && !commands.is_empty() => {
-            app.selected_command_index = app
-                .selected_command_index
-                .saturating_sub(1)
-                .min(commands.len().saturating_sub(1));
+            let len = commands.len();
+            app.selected_command_index = if app.selected_command_index == 0 {
+                len.saturating_sub(1)
+            } else {
+                app.selected_command_index - 1
+            };
             super::HandleResult::Continue
         }
         (KeyCode::Tab, _) if in_slash_mode && !commands.is_empty() => {
@@ -62,10 +64,12 @@ pub(crate) fn handle_main_input(
             super::HandleResult::Continue
         }
         (KeyCode::Up, _) if in_slash_mode && !commands.is_empty() => {
-            app.selected_command_index = app
-                .selected_command_index
-                .saturating_sub(1)
-                .min(commands.len().saturating_sub(1));
+            let len = commands.len();
+            app.selected_command_index = if app.selected_command_index == 0 {
+                len.saturating_sub(1)
+            } else {
+                app.selected_command_index - 1
+            };
             super::HandleResult::Continue
         }
         (KeyCode::Down, _) if in_slash_mode && !commands.is_empty() => {
