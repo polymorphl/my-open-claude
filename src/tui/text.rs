@@ -8,9 +8,9 @@ use super::constants::ACCENT;
 /// Normalize Unicode symbols to ASCII equivalents in code blocks.
 /// LLMs sometimes output ≠, ≥, ≤ etc. instead of !=, >=, <= — this restores valid syntax.
 pub(super) fn normalize_code_operators(s: &str) -> String {
-    s.replace('\u{2260}', "!=")  // ≠ -> !=
-        .replace('\u{2265}', ">=")  // ≥ -> >=
-        .replace('\u{2264}', "<=")  // ≤ -> <=
+    s.replace('\u{2260}', "!=") // ≠ -> !=
+        .replace('\u{2265}', ">=") // ≥ -> >=
+        .replace('\u{2264}', "<=") // ≤ -> <=
 }
 
 /// Segment of a message: either plain text or a fenced code block.
@@ -50,11 +50,12 @@ pub(super) fn parse_message_segments(content: &str) -> Vec<MessageSegment<'_>> {
                 let end = rest.find("\n```").or_else(|| rest.find("```"));
                 match end {
                     Some(pos) => {
-                        let (code, after) = if rest.get(pos..).map_or(false, |s| s.starts_with("\n```")) {
-                            (&rest[..pos], &rest[pos + 4..])
-                        } else {
-                            (&rest[..pos], &rest[pos + 3..])
-                        };
+                        let (code, after) =
+                            if rest.get(pos..).is_some_and(|s| s.starts_with("\n```")) {
+                                (&rest[..pos], &rest[pos + 4..])
+                            } else {
+                                (&rest[..pos], &rest[pos + 3..])
+                            };
                         segments.push(MessageSegment::CodeBlock { lang, code });
                         rest = after;
                     }

@@ -11,7 +11,7 @@ use super::super::app::{App, ChatMessage};
 use super::super::constants::{ACCENT, ACCENT_SECONDARY};
 use super::super::syntax::{highlight_code_line, slice_spans_by_range};
 use super::super::text::{
-    normalize_code_operators, MessageSegment, parse_markdown_inline, parse_message_segments,
+    MessageSegment, normalize_code_operators, parse_markdown_inline, parse_message_segments,
     wrap_message,
 };
 
@@ -189,10 +189,8 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
                             Span::styled("│ ", Style::default().fg(ACCENT_SECONDARY)),
                         ];
                         if spans_slice.is_empty() {
-                            line_content.push(Span::styled(
-                                chunk,
-                                Style::default().fg(ACCENT_SECONDARY),
-                            ));
+                            line_content
+                                .push(Span::styled(chunk, Style::default().fg(ACCENT_SECONDARY)));
                         } else {
                             line_content.extend(spans_slice);
                         }

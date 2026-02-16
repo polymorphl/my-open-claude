@@ -55,20 +55,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // Initialize logging. In TUI mode, write to file to avoid corrupting the display.
-    let mut logger = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("warn"),
-    );
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"));
     if args.prompt.is_none() {
         // TUI mode: logs to file; stderr would corrupt the alternate screen
         let log_path = core::paths::cache_dir().map(|d| d.join("my-open-claude.log"));
-        if let Some(path) = log_path {
-            if let Ok(file) = std::fs::OpenOptions::new()
+        if let Some(path) = log_path
+            && let Ok(file) = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&path)
-            {
-                logger.target(env_logger::Target::Pipe(Box::new(file)));
-            }
+        {
+            logger.target(env_logger::Target::Pipe(Box::new(file)));
         }
     }
     logger.try_init().ok();

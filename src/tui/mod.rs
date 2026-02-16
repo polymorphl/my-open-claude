@@ -4,9 +4,9 @@ mod app;
 mod chat_result;
 mod constants;
 mod draw;
-mod syntax;
 mod handlers;
 mod shortcuts;
+mod syntax;
 mod text;
 
 #[allow(unused_imports)]

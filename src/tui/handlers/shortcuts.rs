@@ -29,7 +29,8 @@ pub(super) fn handle_shortcut(shortcut: Shortcut, ctx: ShortcutContext<'_>) -> H
     match shortcut {
         Shortcut::History => {
             if ctx.app.is_dirty() {
-                let to_save = App::messages_to_persist_format(&ctx.app.messages, &ctx.app.message_timestamps);
+                let to_save =
+                    App::messages_to_persist_format(&ctx.app.messages, &ctx.app.message_timestamps);
                 if !to_save.is_empty() {
                     let title = first_message_preview(&to_save, constants::TITLE_PREVIEW_MAX_LEN);
                     if let Ok(id) = history::save_conversation(
@@ -52,7 +53,8 @@ pub(super) fn handle_shortcut(shortcut: Shortcut, ctx: ShortcutContext<'_>) -> H
             *ctx.pending_chat = None;
             ctx.app.is_streaming = false;
             if ctx.app.is_dirty() {
-                let to_save = App::messages_to_persist_format(&ctx.app.messages, &ctx.app.message_timestamps);
+                let to_save =
+                    App::messages_to_persist_format(&ctx.app.messages, &ctx.app.message_timestamps);
                 if !to_save.is_empty() {
                     let title = first_message_preview(&to_save, constants::TITLE_PREVIEW_MAX_LEN);
                     let _ = history::save_conversation(
