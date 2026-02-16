@@ -14,7 +14,7 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 - **Tool calling**: OpenAI-compatible API (read, write, bash, etc.)
 - **OpenRouter**: use models via the OpenRouter API (or other OpenAI-compatible backends)
 - **Model selector**: choose from tool-capable models (Alt+M / F2), with persisted selection
-- **Persistent conversation history**: conversations saved to disk; load with Alt+H, new conversation with Alt+N
+- **Persistent conversation history**: conversations saved to disk; load with Alt+H, new conversation with Ctrl+N
 - **Credit balance**: OpenRouter balance displayed in the header; click to open your account settings
 
 ## Prerequisites
@@ -80,7 +80,7 @@ The header shows your OpenRouter credit balance (total minus usage). Click it to
 ### Conversation history
 
 - **Alt+H** : open conversation history
-- **Alt+N** : new conversation (current one is saved first)
+- **Ctrl+N** : new conversation (current one is saved first)
 - Conversations are saved automatically after each turn and on exit. A `*` in the title indicates unsaved changes.
 
 ### Model selection

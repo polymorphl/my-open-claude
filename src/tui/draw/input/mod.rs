@@ -207,7 +207,10 @@ fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {
     let lines = wrapped_lines(app.input.as_str(), inner.width);
     let total_lines = lines.len().max(1);
 
-    let cursor_byte = app.input_cursor.min(app.input.len());
+    // Must be at char boundary or str[..n] panics (UTF-8 multi-byte chars: é, 你, emoji).
+    let cursor_byte = app
+        .input
+        .floor_char_boundary(app.input_cursor.min(app.input.len()));
     let cursor_char_offset = app.input[..cursor_byte].chars().count();
     let (cursor_line, cursor_col) = {
         let mut idx = 0;
@@ -314,4 +317,39 @@ pub(crate) fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Re
     draw_input_block(f, app, input_area);
     draw_suggestions(f, app, suggestions_area);
     bar::draw(f, app, shortcuts_area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_with_ellipsis;
+
+    #[test]
+    fn truncate_short_string_unchanged() {
+        assert_eq!(truncate_with_ellipsis("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_exact_width_unchanged() {
+        assert_eq!(truncate_with_ellipsis("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_long_string_adds_ellipsis() {
+        let result = truncate_with_ellipsis("hello world", 8);
+        assert_eq!(result.chars().count(), 8); // 7 chars + ellipsis
+        assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_utf8_chars() {
+        let result = truncate_with_ellipsis("café", 3);
+        assert!(result.ends_with('…'));
+        assert!(result.len() <= 5); // é is 2 bytes
+    }
+
+    #[test]
+    fn truncate_max_width_one() {
+        let result = truncate_with_ellipsis("ab", 1);
+        assert_eq!(result, "…");
+    }
 }

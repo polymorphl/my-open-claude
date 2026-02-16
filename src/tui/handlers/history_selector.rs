@@ -124,7 +124,7 @@ pub(crate) fn handle_history_selector_key(
 pub(crate) fn open_history_selector() -> HistorySelectorState {
     let (conversations, error) = match crate::core::history::list_conversations() {
         Ok(c) => (c, None),
-        Err(e) => (vec![], Some(e.to_string())),
+        Err(e) => (vec![], Some(format!("Error loading history: {}", e))),
     };
     HistorySelectorState {
         conversations,

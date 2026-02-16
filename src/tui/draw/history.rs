@@ -1,4 +1,4 @@
-//! Chat history: message list with blocks, separators, and scrollbar.
+//! Chat history: message list with blocks, separators, code blocks, and scrollbar.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -8,66 +8,124 @@ use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarStat
 
 use super::super::app::{App, ChatMessage};
 use super::super::constants::ACCENT_SECONDARY;
-use super::super::text::{parse_markdown_inline, wrap_message};
+use super::super::text::{
+    MessageSegment, parse_markdown_inline, parse_message_segments, wrap_message,
+};
 
 /// Repeat a character to fill width (approximate; chars may have different display widths).
 fn repeat_char(c: char, n: usize) -> String {
     std::iter::repeat_n(c, n).collect()
 }
 
-/// Add a User or Assistant message block with borders and separator.
-/// Returns (start_line, end_line) for this block in the lines array.
-fn add_message_block(
-    lines: &mut Vec<Line<'static>>,
-    label: &str,
-    content: &str,
+/// Parameters for rendering a message block.
+struct MessageBlockParams<'a> {
+    label: &'a str,
+    content: &'a str,
     content_width: usize,
     wrap_width: usize,
     is_error: bool,
     is_user: bool,
-) -> (usize, usize) {
-    let border_color = if is_user {
+    stream_cursor: bool,
+}
+
+/// Add a User or Assistant message block with borders, code blocks, and separator.
+/// Returns (start_line, end_line) for this block in the lines array.
+fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) -> (usize, usize) {
+    let border_color = if p.is_user {
         Color::DarkGray
     } else {
         ACCENT_SECONDARY
     };
     let border_style = Style::default().fg(border_color);
+    let code_inner_width = p.content_width.saturating_sub(2);
 
     let start = lines.len();
 
     // Top border: "┌─ Label ───...──┐"
-    let top_label = format!("┌─ {} ", label);
-    let top_trail_len = wrap_width.saturating_sub(top_label.chars().count() + 1);
+    let top_label = format!("┌─ {} ", p.label);
+    let top_trail_len = p.wrap_width.saturating_sub(top_label.chars().count() + 1);
     let top_line = format!("{}{}┐", top_label, repeat_char('─', top_trail_len.max(0)));
     lines.push(Line::from(Span::styled(top_line, border_style)));
 
-    // Content lines with left border
-    for chunk in wrap_message(content, content_width) {
-        let (prefix, chunk_style) = if chunk.is_empty() {
-            ("  ", Style::default())
-        } else if is_error {
-            ("  ", Style::default().fg(Color::Red))
-        } else {
-            ("  ", Style::default())
-        };
-        let mut spans = vec![
-            Span::styled("│ ", border_style),
-            Span::styled(prefix, Style::default()),
-        ];
-        if is_error {
-            spans.push(Span::styled(chunk, chunk_style));
-        } else {
-            spans.extend(parse_markdown_inline(&chunk));
+    let segments = parse_message_segments(p.content);
+
+    for segment in &segments {
+        match segment {
+            MessageSegment::Text(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                for chunk in wrap_message(trimmed, p.content_width) {
+                    let (prefix, chunk_style) = if chunk.is_empty() {
+                        ("  ", Style::default())
+                    } else if p.is_error {
+                        ("  ", Style::default().fg(Color::Red))
+                    } else {
+                        ("  ", Style::default())
+                    };
+                    let mut spans = vec![
+                        Span::styled("│ ", border_style),
+                        Span::styled(prefix, Style::default()),
+                    ];
+                    if p.is_error {
+                        spans.push(Span::styled(chunk.clone(), chunk_style));
+                    } else {
+                        spans.extend(parse_markdown_inline(&chunk));
+                    }
+                    lines.push(Line::from(spans));
+                }
+            }
+            MessageSegment::CodeBlock { lang, code } => {
+                let lang_label = if lang.is_empty() { "code" } else { lang };
+                let code_header = format!("┌─ {} ", lang_label);
+                let code_trail_len =
+                    code_inner_width.saturating_sub(code_header.chars().count() + 1);
+                let code_header_line = format!(
+                    "{}{}┐",
+                    code_header,
+                    repeat_char('─', code_trail_len.max(0))
+                );
+                lines.push(Line::from(vec![
+                    Span::styled("│ ", border_style),
+                    Span::styled(code_header_line, Style::default().fg(ACCENT_SECONDARY)),
+                ]));
+                for code_line in code.split('\n') {
+                    for chunk in wrap_message(code_line, code_inner_width) {
+                        lines.push(Line::from(vec![
+                            Span::styled("│ ", border_style),
+                            Span::styled("│ ", Style::default().fg(ACCENT_SECONDARY)),
+                            Span::styled(chunk, Style::default().fg(ACCENT_SECONDARY)),
+                        ]));
+                    }
+                }
+                let code_footer =
+                    format!("└{}┘", repeat_char('─', code_inner_width.saturating_sub(2)));
+                lines.push(Line::from(vec![
+                    Span::styled("│ ", border_style),
+                    Span::styled(code_footer, Style::default().fg(ACCENT_SECONDARY)),
+                ]));
+            }
         }
-        lines.push(Line::from(spans));
+    }
+
+    if p.stream_cursor {
+        let cursor = "▌";
+        lines.push(Line::from(vec![
+            Span::styled("│ ", border_style),
+            Span::styled(
+                format!("  {} ", cursor),
+                Style::default().fg(ACCENT_SECONDARY),
+            ),
+        ]));
     }
 
     // Bottom border
-    let bottom_line = format!("└{}┘", repeat_char('─', wrap_width.saturating_sub(2)));
+    let bottom_line = format!("└{}┘", repeat_char('─', p.wrap_width.saturating_sub(2)));
     lines.push(Line::from(Span::styled(bottom_line, border_style)));
 
     // Separator between messages
-    let sep_line = repeat_char('─', wrap_width);
+    let sep_line = repeat_char('─', p.wrap_width);
     lines.push(Line::from(Span::styled(
         sep_line,
         Style::default().fg(Color::DarkGray),
@@ -92,31 +150,48 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut message_line_ranges: Vec<(usize, usize, usize)> = Vec::new();
 
+    let msg_count = app.messages.len();
     for (msg_idx, msg) in app.messages.iter().enumerate() {
         match msg {
             ChatMessage::User(s) => {
-                let (start, end) =
-                    add_message_block(&mut lines, "You", s, content_width, wrap_width, false, true);
+                let (start, end) = add_message_block(
+                    &mut lines,
+                    MessageBlockParams {
+                        label: "You",
+                        content: s,
+                        content_width,
+                        wrap_width,
+                        is_error: false,
+                        is_user: true,
+                        stream_cursor: false,
+                    },
+                );
                 message_line_ranges.push((msg_idx, start, end));
             }
             ChatMessage::Assistant(s) => {
                 let is_error = s.starts_with("Error:");
+                let is_last_and_streaming =
+                    app.is_streaming && msg_idx == msg_count.saturating_sub(1);
                 let (start, end) = add_message_block(
                     &mut lines,
-                    "Assistant",
-                    s,
-                    content_width,
-                    wrap_width,
-                    is_error,
-                    false,
+                    MessageBlockParams {
+                        label: "Assistant",
+                        content: s,
+                        content_width,
+                        wrap_width,
+                        is_error,
+                        is_user: false,
+                        stream_cursor: is_last_and_streaming,
+                    },
                 );
                 message_line_ranges.push((msg_idx, start, end));
             }
             ChatMessage::ToolLog(s) => {
-                lines.push(Line::from(Span::styled(
-                    format!("  {} ", s),
-                    Style::default().fg(Color::DarkGray),
-                )));
+                let tool_style = Style::default().fg(ACCENT_SECONDARY);
+                lines.push(Line::from(vec![
+                    Span::styled("  ┃ ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{} ", s), tool_style),
+                ]));
             }
             ChatMessage::Thinking => {
                 lines.push(Line::from(vec![Span::styled(

@@ -96,3 +96,45 @@ If AGENTS.md already exists, improve it; otherwise create it. One Write call onl
 pub fn filter_commands(query: &str) -> Vec<&'static SlashCommand> {
     filter_by_query(SLASH_COMMANDS, query, |c| (c.name, c.description))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{SLASH_COMMANDS, filter_commands};
+
+    #[test]
+    fn filter_empty_returns_all() {
+        let out = filter_commands("");
+        assert_eq!(out.len(), SLASH_COMMANDS.len());
+    }
+
+    #[test]
+    fn filter_by_name() {
+        let out = filter_commands("test");
+        assert!(!out.is_empty());
+        assert!(out.iter().any(|c| c.name == "test"));
+    }
+
+    #[test]
+    fn filter_by_partial_name() {
+        let out = filter_commands("rev");
+        assert!(out.iter().any(|c| c.name == "review"));
+    }
+
+    #[test]
+    fn filter_case_insensitive() {
+        let out = filter_commands("TEST");
+        assert!(out.iter().any(|c| c.name == "test"));
+    }
+
+    #[test]
+    fn filter_by_description() {
+        let out = filter_commands("unit tests");
+        assert!(out.iter().any(|c| c.name == "test"));
+    }
+
+    #[test]
+    fn filter_no_match() {
+        let out = filter_commands("xyznonexistent");
+        assert!(out.is_empty());
+    }
+}

@@ -20,6 +20,7 @@ pub(super) struct ShortcutContext<'a> {
     pub app: &'a mut App,
     pub config: &'a Arc<crate::core::config::Config>,
     pub api_messages: &'a mut Option<Vec<serde_json::Value>>,
+    pub pending_chat: &'a mut Option<super::PendingChat>,
     pub pending_model_fetch: &'a mut Option<mpsc::Receiver<Result<Vec<ModelInfo>, String>>>,
     pub rt: &'a Arc<Runtime>,
 }
@@ -45,6 +46,11 @@ pub(super) fn handle_shortcut(shortcut: Shortcut, ctx: ShortcutContext<'_>) -> H
             ctx.app.history_selector = Some(history_selector::open_history_selector());
         }
         Shortcut::NewConversation => {
+            if let Some(pc) = ctx.pending_chat.as_ref() {
+                pc.cancel_token.cancel();
+            }
+            *ctx.pending_chat = None;
+            ctx.app.is_streaming = false;
             if ctx.app.is_dirty()
                 && let Some(msgs) = ctx.api_messages.as_ref()
                 && !msgs.is_empty()

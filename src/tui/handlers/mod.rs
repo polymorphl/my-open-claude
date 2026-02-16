@@ -8,7 +8,7 @@ mod model_selector;
 mod popups;
 mod shortcuts;
 
-use crossterm::event::{KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::Position;
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -56,6 +56,20 @@ pub fn set_cursor_shape(pointer: bool) {
     };
     let _ = std::io::stdout().write_all(seq);
     let _ = std::io::stdout().flush();
+}
+
+/// True when Esc would start Option+key (escape_pending) rather than cancel/slash-clear.
+pub(crate) fn would_esc_start_meta_sequence(
+    key: &crossterm::event::KeyEvent,
+    app: &App,
+    pending_chat: &Option<PendingChat>,
+) -> bool {
+    Shortcut::is_escape(key)
+        && app.confirm_popup.is_none()
+        && app.model_selector.is_none()
+        && app.history_selector.is_none()
+        && !app.input.starts_with('/')
+        && pending_chat.is_none()
 }
 
 /// Check if position is over a copyable message block; return Some(msg_idx) if so.
@@ -161,6 +175,7 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
                     app,
                     config,
                     api_messages,
+                    pending_chat,
                     pending_model_fetch,
                     rt,
                 },
@@ -173,19 +188,14 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
         if shortcut == Shortcut::Quit {
             return HandleResult::Break;
         }
-        // Don't trigger NewConversation on `~` when user is typing (e.g. ~/path)
-        if shortcut == Shortcut::NewConversation
-            && key.code == KeyCode::Char('~')
-            && !app.input.is_empty()
-        {
-            // Fall through to input handler
-        } else if shortcut != Shortcut::None {
+        if shortcut != Shortcut::None {
             return handle_shortcut(
                 shortcut,
                 ShortcutContext {
                     app,
                     config,
                     api_messages,
+                    pending_chat,
                     pending_model_fetch,
                     rt,
                 },

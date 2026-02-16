@@ -5,6 +5,56 @@ use ratatui::text::Span;
 
 use super::constants::ACCENT;
 
+/// Segment of a message: either plain text or a fenced code block.
+#[derive(Debug, Clone)]
+pub(super) enum MessageSegment<'a> {
+    Text(&'a str),
+    CodeBlock { lang: &'a str, code: &'a str },
+}
+
+/// Parse message content into text and code block segments.
+/// Matches ```lang ... ``` or ``` ... ``` patterns.
+pub(super) fn parse_message_segments(content: &str) -> Vec<MessageSegment<'_>> {
+    let mut segments = Vec::new();
+    let mut rest = content;
+    loop {
+        match rest.find("```") {
+            None => {
+                if !rest.is_empty() {
+                    segments.push(MessageSegment::Text(rest));
+                }
+                break;
+            }
+            Some(idx) => {
+                if idx > 0 {
+                    let text = &rest[..idx];
+                    segments.push(MessageSegment::Text(text));
+                }
+                rest = &rest[idx + 3..];
+                let lang_end = rest.find('\n').unwrap_or(rest.len());
+                let lang = rest[..lang_end].trim();
+                rest = if lang_end < rest.len() {
+                    &rest[lang_end + 1..]
+                } else {
+                    ""
+                };
+                match rest.find("\n```") {
+                    Some(end) => {
+                        let code = &rest[..end];
+                        segments.push(MessageSegment::CodeBlock { lang, code });
+                        rest = &rest[end + 4..];
+                    }
+                    None => {
+                        segments.push(MessageSegment::CodeBlock { lang, code: rest });
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    segments
+}
+
 /// Parse inline Markdown: **bold**, `code`, and headings (# / ## / ###) at line start.
 pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
@@ -65,21 +115,6 @@ pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
     spans
 }
 
-/// Split a message into display lines respecting message newlines, then wrap to `width`.
-pub(super) fn wrap_message(msg: &str, width: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in msg.split('\n') {
-        if line.is_empty() {
-            out.push(String::new());
-        } else {
-            for chunk in wrap_text(line, width) {
-                out.push(chunk);
-            }
-        }
-    }
-    out
-}
-
 /// Split text into lines of max byte width `width`, only cutting at UTF-8 character boundaries.
 fn wrap_text(s: &str, width: usize) -> Vec<String> {
     if width == 0 {
@@ -118,4 +153,149 @@ fn wrap_text(s: &str, width: usize) -> Vec<String> {
         rest = next;
     }
     out
+}
+
+/// Split a message into display lines respecting message newlines, then wrap to `width`.
+pub(super) fn wrap_message(msg: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in msg.split('\n') {
+        if line.is_empty() {
+            out.push(String::new());
+        } else {
+            for chunk in wrap_text(line, width) {
+                out.push(chunk);
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MessageSegment, parse_markdown_inline, parse_message_segments, wrap_message};
+
+    #[test]
+    fn parse_message_segments_empty() {
+        let segs = parse_message_segments("");
+        assert!(segs.is_empty());
+    }
+
+    #[test]
+    fn parse_message_segments_text_only() {
+        let segs = parse_message_segments("Hello world");
+        assert_eq!(segs.len(), 1);
+        assert!(matches!(&segs[0], MessageSegment::Text("Hello world")));
+    }
+
+    #[test]
+    fn parse_message_segments_single_code_block() {
+        let segs = parse_message_segments("```rust\nfn main() {}\n```");
+        assert_eq!(segs.len(), 1);
+        match &segs[0] {
+            MessageSegment::CodeBlock { lang, code } => {
+                assert_eq!(*lang, "rust");
+                assert_eq!(*code, "fn main() {}");
+            }
+            _ => panic!("expected CodeBlock"),
+        }
+    }
+
+    #[test]
+    fn parse_message_segments_code_block_without_lang() {
+        let segs = parse_message_segments("```\nfn main() {}\n```");
+        assert_eq!(segs.len(), 1);
+        match &segs[0] {
+            MessageSegment::CodeBlock { lang, code } => {
+                assert!(lang.is_empty());
+                assert_eq!(*code, "fn main() {}");
+            }
+            _ => panic!("expected CodeBlock"),
+        }
+    }
+
+    #[test]
+    fn parse_message_segments_unclosed_code_block() {
+        let segs = parse_message_segments("```rust\nfn main() {");
+        assert_eq!(segs.len(), 1);
+        match &segs[0] {
+            MessageSegment::CodeBlock { lang, code } => {
+                assert_eq!(*lang, "rust");
+                assert_eq!(*code, "fn main() {");
+            }
+            _ => panic!("expected CodeBlock"),
+        }
+    }
+
+    #[test]
+    fn parse_message_segments_text_and_code() {
+        let segs = parse_message_segments("Here is the fix:\n\n```rust\nlet x = 1;\n```\n\nDone.");
+        assert_eq!(segs.len(), 3);
+        assert!(matches!(&segs[0], MessageSegment::Text(t) if t.contains("Here is the fix")));
+        assert!(matches!(&segs[1], MessageSegment::CodeBlock { lang, .. } if *lang == "rust"));
+        assert!(matches!(&segs[2], MessageSegment::Text(t) if t.contains("Done.")));
+    }
+
+    #[test]
+    fn parse_message_segments_multiple_code_blocks() {
+        let segs = parse_message_segments("```a\n1\n```\n\n```b\n2\n```");
+        assert_eq!(segs.len(), 3);
+        assert!(
+            matches!(&segs[0], MessageSegment::CodeBlock { lang, code } if *lang == "a" && *code == "1")
+        );
+        assert!(matches!(&segs[1], MessageSegment::Text(t) if *t == "\n\n"));
+        assert!(
+            matches!(&segs[2], MessageSegment::CodeBlock { lang, code } if *lang == "b" && *code == "2")
+        );
+    }
+
+    #[test]
+    fn parse_markdown_inline_plain() {
+        let spans = parse_markdown_inline("hello");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content.as_ref(), "hello");
+    }
+
+    #[test]
+    fn parse_markdown_inline_bold() {
+        use ratatui::style::Modifier;
+        let spans = parse_markdown_inline("**bold** text");
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content.as_ref(), "bold");
+        assert!(spans[0].style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(spans[1].content.as_ref(), " text");
+    }
+
+    #[test]
+    fn parse_markdown_inline_inline_code() {
+        let spans = parse_markdown_inline("Use `println!` macro");
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content.as_ref(), "Use ");
+        assert_eq!(spans[1].content.as_ref(), "println!");
+        assert_eq!(spans[2].content.as_ref(), " macro");
+    }
+
+    #[test]
+    fn parse_markdown_inline_heading() {
+        let spans = parse_markdown_inline("## Section");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content.as_ref(), "Section");
+    }
+
+    #[test]
+    fn wrap_message_preserves_newlines() {
+        let lines = wrap_message("line1\nline2", 100);
+        assert_eq!(lines, ["line1", "line2"]);
+    }
+
+    #[test]
+    fn wrap_message_wraps_long_line() {
+        let lines = wrap_message("hello world test", 8);
+        assert_eq!(lines, ["hello", "world", "test"]);
+    }
+
+    #[test]
+    fn wrap_message_empty_lines() {
+        let lines = wrap_message("a\n\nb", 100);
+        assert_eq!(lines, ["a", "", "b"]);
+    }
 }

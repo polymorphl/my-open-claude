@@ -14,6 +14,10 @@ pub(super) const SUGGESTIONS: &[&str] = &["Ask", "Build"];
 /// Event poll timeout in milliseconds (main loop).
 pub(crate) const EVENT_POLL_TIMEOUT_MS: u64 = 100;
 
+/// Total wait (ms) when Esc received to drain buffered Esc+key (Option as Meta).
+/// Ghostty and some terminals send the second byte with slight delay; loop with short polls.
+pub(crate) const ESC_SEQUENCE_DRAIN_MS: u64 = 150;
+
 /// Max length for conversation title preview (with ellipsis when truncated).
 pub(crate) const TITLE_PREVIEW_MAX_LEN: usize = 60;
 

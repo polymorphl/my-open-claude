@@ -110,7 +110,7 @@ pub(crate) fn draw_history_selector_popup(
 
     if let Some(ref err) = selector.error {
         let para = Paragraph::new(Line::from(Span::styled(
-            format!("Error loading history: {}", err),
+            err.as_str(),
             Style::default().fg(Color::Red),
         )));
         f.render_widget(para, list_area);
@@ -164,7 +164,7 @@ pub(crate) fn draw_history_selector_popup(
             Span::raw("delete  "),
             Span::styled("Esc ", Style::default().fg(Color::DarkGray)),
             Span::raw("cancel  "),
-            Span::styled("Alt+N ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Ctrl+N ", Style::default().fg(Color::DarkGray)),
             Span::raw("new "),
         ]))
     };

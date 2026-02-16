@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::core::paths;
 
-use super::ConversationMeta;
+use super::index::ConversationMeta;
 
 fn index_path() -> Option<std::path::PathBuf> {
     paths::data_dir().map(|d| d.join("index.json"))
@@ -92,11 +92,15 @@ pub(super) fn write_conv_file(id: &str, messages: &[Value]) -> io::Result<()> {
     Ok(())
 }
 
-/// Remove a conversation file by ID. Returns Ok(()) if removed or path unavailable; Err on IO failure.
+/// Remove a conversation file by ID. Returns Ok(()) if removed, path unavailable, or file already gone.
+/// Treats NotFound as success: goal is "file should not exist", and it doesn't.
 pub(super) fn remove_conv_file(id: &str) -> io::Result<()> {
     let Some(p) = conv_path(id) else {
         return Ok(());
     };
-    fs::remove_file(&p)?;
-    Ok(())
+    match fs::remove_file(&p) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
 }
