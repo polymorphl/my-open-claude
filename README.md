@@ -13,7 +13,7 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 - **Single-prompt mode**: send one request and exit without opening the TUI
 - **Tool calling**: OpenAI-compatible API (read, write, bash, etc.)
 - **OpenRouter**: use models via the OpenRouter API (or other OpenAI-compatible backends)
-- **Model selector**: choose from tool-capable models (Alt+M / F2), with persisted selection
+- **Model selector**: choose from tool-capable models (Alt+M), with persisted selection
 - **Persistent conversation history**: conversations saved to disk; load with Alt+H, new conversation with Ctrl+N
 - **Credit balance**: OpenRouter balance displayed in the header; click to open your account settings
 
