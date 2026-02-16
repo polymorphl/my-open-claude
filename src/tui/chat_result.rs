@@ -15,20 +15,21 @@ const SAVE_ERROR_TOAST_DURATION: Duration = Duration::from_secs(4);
 
 /// Save the current conversation if it has unsaved changes.
 /// Logs and surfaces save errors via a toast.
+/// Persists app.messages (including ToolLog) so tool logs are visible when re-opening.
 pub(super) fn save_conversation_if_dirty(
     app: &mut app::App,
-    api_messages: &Option<Vec<Value>>,
+    _api_messages: &Option<Vec<Value>>,
     config: &Config,
 ) {
     if !app.is_dirty() {
         return;
     }
-    let Some(msgs) = api_messages else { return };
+    let msgs = app::App::messages_to_persist_format(&app.messages);
     if msgs.is_empty() {
         return;
     }
-    let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-    match history::save_conversation(app.conversation_id(), &title, msgs, config) {
+    let title = first_message_preview(&msgs, constants::TITLE_PREVIEW_MAX_LEN);
+    match history::save_conversation(app.conversation_id(), &title, &msgs, config) {
         Ok(id) => {
             app.set_conversation_id(Some(id));
             app.clear_dirty();
@@ -63,8 +64,9 @@ pub(super) fn handle_chat_result(
             }
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Bottom;
-            let title = first_message_preview(&messages, constants::TITLE_PREVIEW_MAX_LEN);
-            match history::save_conversation(app.conversation_id(), &title, &messages, config) {
+            let to_save = app::App::messages_to_persist_format(&app.messages);
+            let title = first_message_preview(&to_save, constants::TITLE_PREVIEW_MAX_LEN);
+            match history::save_conversation(app.conversation_id(), &title, &to_save, config) {
                 Ok(id) => {
                     app.set_conversation_id(Some(id));
                     app.clear_dirty();

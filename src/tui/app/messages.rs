@@ -7,44 +7,74 @@ use crate::core::message;
 use super::{App, ChatMessage};
 
 impl App {
-    /// Populate messages from API format (user/assistant only).
+    /// Populate messages from persisted format (user, assistant, tool_log).
     /// Malformed messages (e.g. unsupported content types) are surfaced as
     /// "[Unsupported message format]" with a log warning instead of silently omitted.
     pub(crate) fn set_messages_from_api(&mut self, api_messages: &[Value]) {
         self.messages.clear();
         for msg in api_messages {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
-            let content = match message::extract_content(msg) {
-                Some(c) => c,
-                None => {
-                    let content_type = msg
-                        .get("content")
-                        .map(|c| {
-                            if c.is_string() {
-                                "string"
-                            } else if c.is_array() {
-                                "array"
-                            } else if c.is_object() {
-                                "object"
-                            } else {
-                                "other"
-                            }
-                        })
-                        .unwrap_or("missing");
-                    log::warn!(
-                        "Could not extract content from message: role={}, content_type={}",
-                        role,
-                        content_type
-                    );
-                    "[Unsupported message format]".to_string()
-                }
-            };
             match role {
-                "user" => self.messages.push(ChatMessage::User(content)),
-                "assistant" => self.messages.push(ChatMessage::Assistant(content)),
+                "user" | "assistant" => {
+                    let content = match message::extract_content(msg) {
+                        Some(c) => c,
+                        None => {
+                            let content_type = msg
+                                .get("content")
+                                .map(|c| {
+                                    if c.is_string() {
+                                        "string"
+                                    } else if c.is_array() {
+                                        "array"
+                                    } else if c.is_object() {
+                                        "object"
+                                    } else {
+                                        "other"
+                                    }
+                                })
+                                .unwrap_or("missing");
+                            log::warn!(
+                                "Could not extract content from message: role={}, content_type={}",
+                                role,
+                                content_type
+                            );
+                            "[Unsupported message format]".to_string()
+                        }
+                    };
+                    if role == "user" {
+                        self.messages.push(ChatMessage::User(content));
+                    } else {
+                        self.messages.push(ChatMessage::Assistant(content));
+                    }
+                }
+                "tool_log" => {
+                    let content = msg
+                        .get("content")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    self.messages.push(ChatMessage::ToolLog(content));
+                }
                 _ => {}
             }
         }
+    }
+
+    /// Serialize app messages to persistence format (user, assistant, tool_log).
+    /// Used when saving; preserves ToolLog for display when re-opening.
+    pub(crate) fn messages_to_persist_format(msgs: &[ChatMessage]) -> Vec<Value> {
+        msgs.iter()
+            .filter_map(|m| match m {
+                ChatMessage::User(s) => Some(serde_json::json!({"role": "user", "content": s})),
+                ChatMessage::Assistant(s) => {
+                    Some(serde_json::json!({"role": "assistant", "content": s}))
+                }
+                ChatMessage::ToolLog(s) => {
+                    Some(serde_json::json!({"role": "tool_log", "content": s}))
+                }
+                ChatMessage::Thinking => None,
+            })
+            .collect()
     }
 
     pub(crate) fn push_user(&mut self, text: &str) {

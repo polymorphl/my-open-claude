@@ -59,12 +59,13 @@ pub(super) fn handle_history_selector(
             app.history_selector = None;
         }
         history_selector::HistorySelectorAction::Load { id } => {
-            if let Some(messages) = history::load_conversation(&id) {
-                app.set_messages_from_api(&messages);
+            if let Some(persisted) = history::load_conversation(&id) {
+                app.set_messages_from_api(&persisted);
                 app.set_conversation_id(Some(id.clone()));
                 app.scroll = crate::tui::app::ScrollPosition::Bottom;
-                app.token_usage = Some(llm::TokenUsage::estimated_from_messages(&messages));
-                *api_messages = Some(messages);
+                let api_only = history::api_messages_from_persisted(&persisted);
+                app.token_usage = Some(llm::TokenUsage::estimated_from_messages(&api_only));
+                *api_messages = Some(api_only);
             }
             app.history_selector = None;
         }

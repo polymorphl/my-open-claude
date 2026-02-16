@@ -13,7 +13,8 @@ use uuid::Uuid;
 use crate::core::config::Config;
 use crate::core::message;
 
-/// Extract messages suitable for persistence: only user and assistant with content.
+/// Extract messages suitable for persistence: user, assistant, and tool_log with content.
+/// tool_log entries preserve verbose tool execution output for display when re-opening.
 fn sanitize_messages_for_save(messages: &[Value]) -> Vec<Value> {
     messages
         .iter()
@@ -30,6 +31,10 @@ fn sanitize_messages_for_save(messages: &[Value]) -> Vec<Value> {
                         .cloned()
                         .unwrap_or(serde_json::Value::Null);
                     Some(serde_json::json!({"role": "assistant", "content": content}))
+                }
+                "tool_log" => {
+                    let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                    Some(serde_json::json!({"role": "tool_log", "content": content}))
                 }
                 _ => None,
             }
@@ -55,9 +60,34 @@ pub fn first_message_preview(messages: &[Value], max_len: usize) -> String {
     "(No title)".to_string()
 }
 
-/// Load a conversation by ID. Returns the messages in API format.
+/// Load a conversation by ID. Returns all persisted messages (user, assistant, tool_log).
 pub fn load_conversation(id: &str) -> Option<Vec<Value>> {
     storage::read_conv_messages(id)
+}
+
+/// Filter persisted messages to API format (user and assistant only).
+/// Used for chat_resume; the API does not accept tool_log.
+pub fn api_messages_from_persisted(persisted: &[Value]) -> Vec<Value> {
+    persisted
+        .iter()
+        .filter_map(|msg| {
+            let role = msg.get("role")?.as_str()?;
+            match role {
+                "user" => {
+                    let content = msg.get("content")?;
+                    Some(serde_json::json!({"role": "user", "content": content}))
+                }
+                "assistant" => {
+                    let content = msg
+                        .get("content")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
+                    Some(serde_json::json!({"role": "assistant", "content": content}))
+                }
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 /// Load concatenated text content from a conversation for full-text search.

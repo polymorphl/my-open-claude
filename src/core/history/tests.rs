@@ -9,7 +9,8 @@ use std::collections::HashMap;
 
 use crate::core::history::index::ConversationMeta;
 use crate::core::history::{
-    filter_conversations_with_content, first_message_preview, load_conversation, save_conversation,
+    api_messages_from_persisted, filter_conversations_with_content, first_message_preview,
+    load_conversation, save_conversation,
 };
 use async_openai::config::OpenAIConfig;
 
@@ -200,6 +201,38 @@ fn save_then_load_roundtrip() {
     assert_eq!(loaded.len(), 2);
     assert_eq!(loaded[0]["role"], "user");
     assert_eq!(loaded[1]["role"], "assistant");
+}
+
+#[test]
+fn save_then_load_preserves_tool_log() {
+    let _lock = PERSISTENCE_TEST_LOCK.lock().unwrap();
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let data_dir = tmp.path().join("conversations");
+    unsafe {
+        std::env::set_var("TEST_DATA_DIR", &data_dir);
+    }
+    let _guard = EnvGuard("TEST_DATA_DIR");
+
+    let config = test_config();
+    let messages = vec![
+        serde_json::json!({"role": "user", "content": "Hello"}),
+        serde_json::json!({"role": "tool_log", "content": "→ Read src/main.rs"}),
+        serde_json::json!({"role": "assistant", "content": "Here is the code..."}),
+    ];
+
+    let id =
+        save_conversation(None, "Test with tool_log", &messages, &config).expect("save succeed");
+    let loaded = load_conversation(&id).expect("load Some");
+    assert_eq!(loaded.len(), 3);
+    assert_eq!(loaded[0]["role"], "user");
+    assert_eq!(loaded[1]["role"], "tool_log");
+    assert_eq!(loaded[1]["content"], "→ Read src/main.rs");
+    assert_eq!(loaded[2]["role"], "assistant");
+
+    let api_only = api_messages_from_persisted(&loaded);
+    assert_eq!(api_only.len(), 2);
+    assert_eq!(api_only[0]["role"], "user");
+    assert_eq!(api_only[1]["role"], "assistant");
 }
 
 #[test]
