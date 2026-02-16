@@ -3,7 +3,7 @@
 mod index;
 mod storage;
 
-pub use index::{ConversationMeta, filter_conversations, list_conversations};
+pub use index::{ConversationMeta, filter_conversations_with_content, list_conversations};
 
 use std::io;
 
@@ -58,6 +58,17 @@ pub fn first_message_preview(messages: &[Value], max_len: usize) -> String {
 /// Load a conversation by ID. Returns the messages in API format.
 pub fn load_conversation(id: &str) -> Option<Vec<Value>> {
     storage::read_conv_messages(id)
+}
+
+/// Load concatenated text content from a conversation for full-text search.
+/// Returns None if the conversation cannot be loaded.
+pub fn load_conversation_searchable_content(id: &str) -> Option<String> {
+    let messages = storage::read_conv_messages(id)?;
+    let parts: Vec<String> = messages
+        .iter()
+        .filter_map(message::extract_content)
+        .collect();
+    Some(parts.join("\n"))
 }
 
 /// Save a conversation. Creates or updates. Returns the conversation ID.

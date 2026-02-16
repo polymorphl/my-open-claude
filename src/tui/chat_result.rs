@@ -56,9 +56,7 @@ pub(super) fn handle_chat_result(
             usage,
         }) => {
             app.token_usage = Some(usage);
-            if tool_log_already_streamed {
-                app.clear_progress_after_last_user();
-            } else {
+            if !tool_log_already_streamed {
                 for line in tool_log {
                     app.push_tool_log(line);
                 }

@@ -73,8 +73,12 @@ pub(super) fn handle_history_selector(
             match history::delete_conversation(&id) {
                 Ok(()) => {
                     selector.conversations.retain(|c| c.id != id);
-                    let filtered =
-                        history::filter_conversations(&selector.conversations, &selector.filter);
+                    selector.content_cache.remove(&id);
+                    let filtered = history::filter_conversations_with_content(
+                        &selector.conversations,
+                        &selector.filter,
+                        &selector.content_cache,
+                    );
                     selector.selected_index = selector
                         .selected_index
                         .min(filtered.len().saturating_sub(1));

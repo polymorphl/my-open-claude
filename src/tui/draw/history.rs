@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 use super::super::app::{App, ChatMessage};
-use super::super::constants::ACCENT_SECONDARY;
+use super::super::constants::{ACCENT, ACCENT_SECONDARY};
 use super::super::text::{
     MessageSegment, parse_markdown_inline, parse_message_segments, wrap_message,
 };
@@ -188,8 +188,9 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
             }
             ChatMessage::ToolLog(s) => {
                 let tool_style = Style::default().fg(ACCENT_SECONDARY);
+                let marker_style = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
                 lines.push(Line::from(vec![
-                    Span::styled("  ┃ ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("  ┃ ", marker_style),
                     Span::styled(format!("{} ", s), tool_style),
                 ]));
             }

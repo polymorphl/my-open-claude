@@ -6,7 +6,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
-use crate::core::history::{ConversationMeta, filter_conversations};
+use crate::core::history::{ConversationMeta, filter_conversations_with_content};
 
 use super::super::app::HistorySelectorState;
 use super::super::constants::ACCENT;
@@ -102,7 +102,11 @@ pub(crate) fn draw_history_selector_popup(
         .style(Style::default().fg(Color::White));
     f.render_widget(filter_para, filter_area);
 
-    let filtered = filter_conversations(&selector.conversations, &selector.filter);
+    let filtered = filter_conversations_with_content(
+        &selector.conversations,
+        &selector.filter,
+        &selector.content_cache,
+    );
     let clamped_index = selector
         .selected_index
         .min(filtered.len().saturating_sub(1));

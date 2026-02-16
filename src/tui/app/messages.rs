@@ -93,20 +93,9 @@ impl App {
         if thinking {
             self.messages.push(ChatMessage::Thinking);
         } else {
-            // Remove Thinking by value (may not be last if we streamed tool_log during thinking)
+            // Remove Thinking by value (may not be last if we streamed ToolLog during thinking)
             self.messages
                 .retain(|m| !matches!(m, ChatMessage::Thinking));
-        }
-    }
-
-    /// Remove verbose progress (ToolLog) shown during thinking. Keeps history up to last User.
-    pub(crate) fn clear_progress_after_last_user(&mut self) {
-        if let Some(last_user_idx) = self
-            .messages
-            .iter()
-            .rposition(|m| matches!(m, ChatMessage::User(_)))
-        {
-            self.messages.truncate(last_user_idx + 1);
         }
     }
 

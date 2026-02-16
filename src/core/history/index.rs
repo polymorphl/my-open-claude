@@ -1,11 +1,11 @@
 //! Conversation index: metadata, listing, filtering, and index mutations.
 
+use std::collections::HashMap;
 use std::io;
 
 use serde::{Deserialize, Serialize};
 
 use crate::core::config::Config;
-use crate::core::util;
 
 use super::storage;
 
@@ -18,12 +18,28 @@ pub struct ConversationMeta {
     pub updated_at: u64,
 }
 
-/// Filter conversations by title or id (case-insensitive).
-pub fn filter_conversations<'a>(
+/// Filter conversations by title, id, or message content (case-insensitive).
+/// When `content_by_id` is provided, also matches if any message content contains the query.
+pub fn filter_conversations_with_content<'a>(
     convs: &'a [ConversationMeta],
     query: &str,
+    content_by_id: &HashMap<String, String>,
 ) -> Vec<&'a ConversationMeta> {
-    util::filter_by_query(convs, query, |c| (c.title.as_str(), c.id.as_str()))
+    if query.is_empty() {
+        return convs.iter().collect();
+    }
+    let q = query.to_lowercase();
+    convs
+        .iter()
+        .filter(|c| {
+            c.title.to_lowercase().contains(&q)
+                || c.id.to_lowercase().contains(&q)
+                || content_by_id
+                    .get(&c.id)
+                    .map(|s| s.to_lowercase().contains(&q))
+                    .unwrap_or(false)
+        })
+        .collect()
 }
 
 /// List all conversations, sorted by updated_at descending.

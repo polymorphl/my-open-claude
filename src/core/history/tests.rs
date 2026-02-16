@@ -5,9 +5,11 @@ use std::io;
 use serde_json::Value;
 
 use crate::core::config::Config;
+use std::collections::HashMap;
+
 use crate::core::history::index::ConversationMeta;
 use crate::core::history::{
-    filter_conversations, first_message_preview, load_conversation, save_conversation,
+    filter_conversations_with_content, first_message_preview, load_conversation, save_conversation,
 };
 use async_openai::config::OpenAIConfig;
 
@@ -68,7 +70,8 @@ fn filter_conversations_empty_query_returns_all() {
             updated_at: 0,
         },
     ];
-    let out = filter_conversations(&convs, "");
+    let cache = HashMap::new();
+    let out = filter_conversations_with_content(&convs, "", &cache);
     assert_eq!(out.len(), 2);
 }
 
@@ -88,7 +91,8 @@ fn filter_conversations_match_by_title() {
             updated_at: 0,
         },
     ];
-    let out = filter_conversations(&convs, "hello");
+    let cache = HashMap::new();
+    let out = filter_conversations_with_content(&convs, "hello", &cache);
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].title, "Hello world");
 }
@@ -101,9 +105,36 @@ fn filter_conversations_match_by_id() {
         created_at: 0,
         updated_at: 0,
     }];
-    let out = filter_conversations(&convs, "abc");
+    let cache = HashMap::new();
+    let out = filter_conversations_with_content(&convs, "abc", &cache);
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].id, "abc-123");
+}
+
+#[test]
+fn filter_conversations_match_by_content() {
+    let convs = vec![
+        ConversationMeta {
+            id: "1".to_string(),
+            title: "Chat A".to_string(),
+            created_at: 0,
+            updated_at: 0,
+        },
+        ConversationMeta {
+            id: "2".to_string(),
+            title: "Chat B".to_string(),
+            created_at: 0,
+            updated_at: 0,
+        },
+    ];
+    let mut cache = HashMap::new();
+    cache.insert(
+        "2".to_string(),
+        "Detailed discussion about Rust ownership".to_string(),
+    );
+    let out = filter_conversations_with_content(&convs, "Rust", &cache);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].id, "2");
 }
 
 fn test_config() -> Config {

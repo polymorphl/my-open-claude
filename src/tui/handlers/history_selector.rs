@@ -2,7 +2,9 @@
 
 use crossterm::event::{KeyCode, KeyModifiers};
 
-use crate::core::history::filter_conversations;
+use crate::core::history::{
+    filter_conversations_with_content, load_conversation_searchable_content,
+};
 
 use super::super::app::HistorySelectorState;
 
@@ -68,7 +70,11 @@ pub(crate) fn handle_history_selector_key(
         _ => {}
     }
 
-    let filtered = filter_conversations(&selector.conversations, &selector.filter);
+    let filtered = filter_conversations_with_content(
+        &selector.conversations,
+        &selector.filter,
+        &selector.content_cache,
+    );
     match key_code {
         KeyCode::Esc => HistorySelectorAction::Close,
         KeyCode::Char('r') if key_modifiers.contains(KeyModifiers::CONTROL) => {
@@ -121,11 +127,16 @@ pub(crate) fn handle_history_selector_key(
 }
 
 /// Open the history selector. Caller must save current conversation first if dirty.
+/// Preloads conversation content for full-text search.
 pub(crate) fn open_history_selector() -> HistorySelectorState {
     let (conversations, error) = match crate::core::history::list_conversations() {
         Ok(c) => (c, None),
         Err(e) => (vec![], Some(format!("Error loading history: {}", e))),
     };
+    let content_cache: std::collections::HashMap<String, String> = conversations
+        .iter()
+        .filter_map(|c| load_conversation_searchable_content(&c.id).map(|s| (c.id.clone(), s)))
+        .collect();
     HistorySelectorState {
         conversations,
         selected_index: 0,
@@ -133,5 +144,6 @@ pub(crate) fn open_history_selector() -> HistorySelectorState {
         filter: String::new(),
         renaming: None,
         error,
+        content_cache,
     }
 }

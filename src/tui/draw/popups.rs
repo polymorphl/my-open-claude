@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use crate::core::models::filter_models;
 
 use super::super::app::ModelSelectorState;
-use super::super::constants::ACCENT;
+use super::super::constants::{self, ACCENT};
 
 fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
@@ -107,13 +107,24 @@ pub(crate) fn draw_model_selector_popup(
         )));
         f.render_widget(para, list_area);
     } else if selector.models.is_empty() {
-        let para = Paragraph::new(Line::from(Span::styled(
-            "Loading...",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        )));
-        f.render_widget(para, list_area);
+        let spinner = selector
+            .fetch_started_at
+            .map(|start| {
+                let phase = start.elapsed().as_millis() as usize;
+                let frame = (phase / 80) % constants::LOGO_THINKING.len();
+                constants::LOGO_THINKING[frame]
+            })
+            .unwrap_or("⠋");
+        let loading_line = Line::from(vec![
+            Span::styled(format!("{} ", spinner), Style::default().fg(ACCENT)),
+            Span::styled(
+                "Loading models...",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            ),
+        ]);
+        f.render_widget(Paragraph::new(loading_line), list_area);
     } else {
         let filtered = filter_models(&selector.models, &selector.filter);
         let clamped_index = selector

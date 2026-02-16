@@ -8,6 +8,7 @@ use crate::core::models::ModelInfo;
 use crate::core::workspace::Workspace;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
+use std::collections::HashMap;
 use std::time::Instant;
 
 /// Messages displayed in the history (user or assistant).
@@ -34,6 +35,8 @@ pub struct ModelSelectorState {
     pub fetch_error: Option<String>,
     /// Filter query (case-insensitive search on model id/name).
     pub filter: String,
+    /// When the model fetch started; used for loading spinner animation.
+    pub(crate) fetch_started_at: Option<Instant>,
 }
 
 /// State for the history selector popup (Alt+H).
@@ -46,6 +49,8 @@ pub struct HistorySelectorState {
     pub renaming: Option<(String, String)>,
     /// Error loading conversations or from delete/rename.
     pub error: Option<String>,
+    /// Conversation ID -> concatenated message content for full-text search.
+    pub content_cache: HashMap<String, String>,
 }
 
 /// Scroll position: either a specific line index, or "at bottom" (follow new content).

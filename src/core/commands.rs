@@ -27,12 +27,13 @@ pub static SLASH_COMMANDS: &[SlashCommand] = &[
     SlashCommand {
         name: "init",
         description: "Create or update AGENTS.md for this project",
-        prompt_prefix: "Analyze this codebase and create an AGENTS.md file containing: \
+        prompt_prefix: "Analyze this codebase and create or update AGENTS.md containing: \
 (1) Build/lint/test commands—especially for running a single test. \
 (2) Code style guidelines: imports, formatting, types, naming conventions, error handling. \
 The file will be given to agentic coding agents (such as yourself) that operate in this repository. Make it about 150 lines long. \
 If there are Cursor rules (Glob \".cursor/rules/*\", \".cursorrules\") or Copilot rules (Glob \".github/copilot-instructions.md\"), include them. Use Read on each path returned by Glob. \
-If AGENTS.md already exists, improve it; otherwise create it. One Write call only—then respond with a brief summary.",
+If AGENTS.md exists: Read it first, then use Edit for each change (preserve unchanged content). If it does not exist: use Write to create it. \
+Respond with a brief summary.",
         mode: "Build",
     },
     SlashCommand {
