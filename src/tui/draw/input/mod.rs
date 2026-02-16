@@ -25,6 +25,21 @@ const WELCOME_INPUT_WIDTH: u16 = 64;
 
 pub(crate) use bar::draw as draw_bottom_bar;
 
+const ERROR_LINES: u16 = 2;
+
+fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
+    if s.chars().count() <= max_width {
+        s.to_string()
+    } else {
+        format!(
+            "{}…",
+            s.chars()
+                .take(max_width.saturating_sub(1))
+                .collect::<String>()
+        )
+    }
+}
+
 pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     let in_slash = app.input.starts_with('/');
     let filter = app.input.get(1..).unwrap_or("");
@@ -34,18 +49,49 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         0
     };
+    let has_error = app.credits_fetch_error.is_some();
     let base = 1 + INPUT_LINES + 1 + 1;
+    let error_height = if has_error { ERROR_LINES } else { 0u16 };
+    let total_height = area.height;
     let mascot_height = if ac_height > 0 {
-        (35u16.saturating_sub(ac_height).saturating_sub(base)).max(10)
+        (total_height
+            .saturating_sub(ac_height)
+            .saturating_sub(base)
+            .saturating_sub(error_height))
+        .max(4)
     } else {
-        35u16.saturating_sub(base)
+        (total_height
+            .saturating_sub(base)
+            .saturating_sub(error_height))
+        .max(4)
     };
 
     let constraints: &[Constraint] = if ac_height > 0 {
+        if has_error {
+            &[
+                Constraint::Length(mascot_height),
+                Constraint::Length(error_height),
+                Constraint::Length(1),
+                Constraint::Length(ac_height),
+                Constraint::Length(INPUT_LINES),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ]
+        } else {
+            &[
+                Constraint::Length(mascot_height),
+                Constraint::Length(1),
+                Constraint::Length(ac_height),
+                Constraint::Length(INPUT_LINES),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ]
+        }
+    } else if has_error {
         &[
             Constraint::Length(mascot_height),
+            Constraint::Length(error_height),
             Constraint::Length(1),
-            Constraint::Length(ac_height),
             Constraint::Length(INPUT_LINES),
             Constraint::Length(1),
             Constraint::Length(1),
@@ -65,18 +111,30 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints(constraints)
         .split(area);
 
-    let input_area_outer = if ac_height > 0 {
-        inner_chunks[3]
+    let (input_area_outer, suggestions_area, error_area) = if ac_height > 0 {
+        if has_error {
+            (inner_chunks[4], inner_chunks[5], Some(inner_chunks[1]))
+        } else {
+            (inner_chunks[3], inner_chunks[4], None)
+        }
+    } else if has_error {
+        (inner_chunks[3], inner_chunks[4], Some(inner_chunks[1]))
     } else {
-        inner_chunks[2]
-    };
-    let suggestions_area = if ac_height > 0 {
-        inner_chunks[4]
-    } else {
-        inner_chunks[3]
+        (inner_chunks[2], inner_chunks[3], None)
     };
 
     welcome_mascot::draw_mascot(f, inner_chunks[0]);
+
+    if let (Some(area), Some(err)) = (error_area, app.credits_fetch_error.as_ref()) {
+        let err_line = Line::from(Span::styled(
+            truncate_with_ellipsis(err, area.width as usize),
+            Style::default().fg(Color::Red),
+        ));
+        f.render_widget(
+            Paragraph::new(err_line).alignment(ratatui::layout::HorizontalAlignment::Center),
+            area,
+        );
+    }
 
     let input_width = WELCOME_INPUT_WIDTH.min(area.width);
     let input_area = Rect {
@@ -87,7 +145,11 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     if ac_height > 0 {
-        let ac_area = inner_chunks[2];
+        let ac_area = if has_error {
+            inner_chunks[3]
+        } else {
+            inner_chunks[2]
+        };
         // Welcome mode: keep centered narrow layout to avoid misalignment with mascot/input.
         let ac_rect = Rect {
             x: area.x + area.width.saturating_sub(input_width) / 2,
@@ -100,25 +162,32 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
 
     draw_input_block(f, app, input_area);
 
-    let suggestion_spans: Vec<Span> = SUGGESTIONS
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let selected = i == app.selected_suggestion;
-            Span::styled(
-                format!(" {} ", s),
-                if selected {
-                    Style::default().fg(Color::Black).bg(ACCENT)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                },
-            )
-        })
-        .collect();
+    let suggestion_spans = build_suggestion_spans(app);
     f.render_widget(
-        Paragraph::new(Line::from(suggestion_spans)).alignment(ratatui::layout::Alignment::Center),
+        Paragraph::new(Line::from(suggestion_spans))
+            .alignment(ratatui::layout::HorizontalAlignment::Center),
         suggestions_area,
     );
+}
+
+fn build_suggestion_spans(app: &App) -> Vec<Span<'_>> {
+    let mut spans: Vec<Span> = Vec::new();
+    let sep = Span::styled(" · ", Style::default().fg(Color::DarkGray));
+    for (i, s) in SUGGESTIONS.iter().enumerate() {
+        if i > 0 {
+            spans.push(sep.clone());
+        }
+        let selected = i == app.selected_suggestion;
+        spans.push(Span::styled(
+            format!(" {} ", s),
+            if selected {
+                Style::default().fg(Color::Black).bg(ACCENT)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            },
+        ));
+    }
+    spans
 }
 
 fn wrapped_lines(text: &str, width: u16) -> Vec<String> {
@@ -131,10 +200,19 @@ fn wrapped_lines(text: &str, width: u16) -> Vec<String> {
         .collect()
 }
 
+fn input_has_focus(app: &App) -> bool {
+    app.confirm_popup.is_none() && app.model_selector.is_none() && app.history_selector.is_none()
+}
+
 fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {
+    let border_style = if input_has_focus(app) {
+        Style::default().fg(ACCENT)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
     let input_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(border_style);
     let inner = input_block.inner(input_area);
     let inner_height = inner.height as usize;
 
@@ -152,7 +230,10 @@ fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {
     let lines = wrapped_lines(app.input.as_str(), inner.width);
     let total_lines = lines.len().max(1);
 
-    let cursor_byte = app.input_cursor.min(app.input.len());
+    // Must be at char boundary or str[..n] panics (UTF-8 multi-byte chars: é, 你, emoji).
+    let cursor_byte = app
+        .input
+        .floor_char_boundary(app.input_cursor.min(app.input.len()));
     let cursor_char_offset = app.input[..cursor_byte].chars().count();
     let (cursor_line, cursor_col) = {
         let mut idx = 0;
@@ -185,23 +266,10 @@ fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {
 }
 
 fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
-    let suggestion_spans: Vec<Span> = SUGGESTIONS
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let selected = i == app.selected_suggestion;
-            Span::styled(
-                format!(" {} ", s),
-                if selected {
-                    Style::default().fg(Color::Black).bg(ACCENT)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                },
-            )
-        })
-        .collect();
+    let suggestion_spans = build_suggestion_spans(app);
     f.render_widget(
-        Paragraph::new(Line::from(suggestion_spans)).alignment(ratatui::layout::Alignment::Center),
+        Paragraph::new(Line::from(suggestion_spans))
+            .alignment(ratatui::layout::HorizontalAlignment::Center),
         area,
     );
 }
@@ -258,4 +326,39 @@ pub(crate) fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Re
     draw_input_block(f, app, input_area);
     draw_suggestions(f, app, suggestions_area);
     bar::draw(f, app, shortcuts_area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_with_ellipsis;
+
+    #[test]
+    fn truncate_short_string_unchanged() {
+        assert_eq!(truncate_with_ellipsis("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_exact_width_unchanged() {
+        assert_eq!(truncate_with_ellipsis("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_long_string_adds_ellipsis() {
+        let result = truncate_with_ellipsis("hello world", 8);
+        assert_eq!(result.chars().count(), 8); // 7 chars + ellipsis
+        assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_utf8_chars() {
+        let result = truncate_with_ellipsis("café", 3);
+        assert!(result.ends_with('…'));
+        assert!(result.len() <= 5); // é is 2 bytes
+    }
+
+    #[test]
+    fn truncate_max_width_one() {
+        let result = truncate_with_ellipsis("ab", 1);
+        assert_eq!(result, "…");
+    }
 }

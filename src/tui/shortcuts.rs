@@ -8,7 +8,7 @@
 //! | Newline       | Shift+Enter                              |
 //! | Scroll        | ↑ ↓ PageUp PageDown                     |
 //! | History       | Alt+H, Esc+h (Option as meta), Mac chars |
-//! | New conv      | Alt+N, Esc+n, Mac chars                  |
+//! | New conv      | Ctrl+N                                      |
 //! | Model selector| Alt+M, Esc+m, µ (Option+M Mac)          |
 //! | Quit          | Ctrl+C                                   |
 //!
@@ -23,7 +23,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 pub enum Shortcut {
     /// Open conversation history (Alt+H, Esc+h)
     History,
-    /// New conversation (Alt+N, Esc+n)
+    /// New conversation (Ctrl+N)
     NewConversation,
     /// Model selector (Alt+M, Esc+m)
     ModelSelector,
@@ -36,17 +36,10 @@ pub enum Shortcut {
 /// Characters produced by Option+key on Mac (Option not configured as Meta).
 /// Varies by terminal/keyboard. Option+H = Ì (U+00CC), Option+N = ~ (U+007E), Option+M = µ (U+00B5).
 const MAC_OPTION_H: &[char] = &['\u{00CC}', '\u{02D9}', '\u{0127}', '\u{0302}']; // Ì, ˙, ħ, ̂
-const MAC_OPTION_N: &[char] = &[
-    '\u{007E}', '\u{02DC}', '\u{0303}', '\u{0144}', '\u{0148}', '\u{00F1}',
-]; // ~, ˜, ̃, ń, ň, ñ
 const MAC_OPTION_M: char = '\u{00B5}'; // µ
 
 fn is_mac_option_h(c: char) -> bool {
     MAC_OPTION_H.contains(&c)
-}
-
-fn is_mac_option_n(c: char) -> bool {
-    MAC_OPTION_N.contains(&c)
 }
 
 impl Shortcut {
@@ -60,7 +53,6 @@ impl Shortcut {
         if escape_pending {
             return match key.code {
                 KeyCode::Char('h') => Some(Shortcut::History),
-                KeyCode::Char('n') => Some(Shortcut::NewConversation),
                 KeyCode::Char('m') => Some(Shortcut::ModelSelector),
                 _ => None,
             };
@@ -70,17 +62,16 @@ impl Shortcut {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Some(Shortcut::Quit)
             }
+            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Some(Shortcut::NewConversation)
+            }
             KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::ALT) => {
                 Some(Shortcut::History)
-            }
-            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::ALT) => {
-                Some(Shortcut::NewConversation)
             }
             KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::ALT) => {
                 Some(Shortcut::ModelSelector)
             }
             KeyCode::Char(c) if is_mac_option_h(c) => Some(Shortcut::History),
-            KeyCode::Char(c) if is_mac_option_n(c) => Some(Shortcut::NewConversation),
             KeyCode::Char(MAC_OPTION_M) => Some(Shortcut::ModelSelector),
             _ => None,
         }
@@ -89,6 +80,100 @@ impl Shortcut {
     /// True if key is Escape (start of Option+key sequence on some terminals).
     pub fn is_escape(key: &KeyEvent) -> bool {
         key.kind == KeyEventKind::Press && key.code == KeyCode::Esc
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Shortcut;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        }
+    }
+
+    #[test]
+    fn is_escape() {
+        assert!(Shortcut::is_escape(&key(
+            KeyCode::Esc,
+            KeyModifiers::empty()
+        )));
+        assert!(!Shortcut::is_escape(&key(
+            KeyCode::Char('c'),
+            KeyModifiers::empty()
+        )));
+    }
+
+    #[test]
+    fn match_quit_ctrl_c() {
+        assert_eq!(
+            Shortcut::match_key(&key(KeyCode::Char('c'), KeyModifiers::CONTROL), false),
+            Some(Shortcut::Quit)
+        );
+    }
+
+    #[test]
+    fn match_history_alt_h() {
+        assert_eq!(
+            Shortcut::match_key(&key(KeyCode::Char('h'), KeyModifiers::ALT), false),
+            Some(Shortcut::History)
+        );
+    }
+
+    #[test]
+    fn match_model_selector_alt_m() {
+        assert_eq!(
+            Shortcut::match_key(&key(KeyCode::Char('m'), KeyModifiers::ALT), false),
+            Some(Shortcut::ModelSelector)
+        );
+    }
+
+    #[test]
+    fn match_new_conversation_ctrl_n() {
+        assert_eq!(
+            Shortcut::match_key(&key(KeyCode::Char('n'), KeyModifiers::CONTROL), false),
+            Some(Shortcut::NewConversation)
+        );
+    }
+
+    #[test]
+    fn match_escape_pending_h() {
+        assert_eq!(
+            Shortcut::match_key(&key(KeyCode::Char('h'), KeyModifiers::empty()), true),
+            Some(Shortcut::History)
+        );
+    }
+
+    #[test]
+    fn match_escape_pending_m() {
+        assert_eq!(
+            Shortcut::match_key(&key(KeyCode::Char('m'), KeyModifiers::empty()), true),
+            Some(Shortcut::ModelSelector)
+        );
+    }
+
+    #[test]
+    fn match_no_shortcut() {
+        assert_eq!(
+            Shortcut::match_key(&key(KeyCode::Char('x'), KeyModifiers::empty()), false),
+            None
+        );
+    }
+
+    #[test]
+    fn match_key_release_ignored() {
+        let key_release = KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Release,
+            state: KeyEventState::empty(),
+        };
+        assert_eq!(Shortcut::match_key(&key_release, false), None);
     }
 }
 
@@ -122,7 +207,7 @@ pub mod labels {
                 Line::from(vec![
                     Span::styled("Alt+H ", DIM),
                     Span::raw("history"),
-                    Span::styled("  Alt+N ", DIM),
+                    Span::styled("  Ctrl+N ", DIM),
                     Span::raw("new"),
                     Span::styled("  Alt+M ", DIM),
                     Span::raw("model"),

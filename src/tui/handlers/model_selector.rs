@@ -3,6 +3,7 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use ratatui::widgets::ListState;
 use tokio::runtime::Runtime;
@@ -84,6 +85,7 @@ pub(crate) fn open_model_selector(
         list_state: ListState::default(),
         fetch_error: None,
         filter: String::new(),
+        fetch_started_at: Some(Instant::now()),
     });
     *pending_model_fetch = Some(rx);
     std::thread::spawn(move || {

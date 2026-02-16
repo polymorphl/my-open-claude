@@ -1,15 +1,15 @@
-//! Welcome screen: mascot ASCII art (owl in braille characters).
+//! Welcome screen: mascot ASCII art
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{HorizontalAlignment, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::super::constants::ACCENT;
 
-/// Mascot ASCII art – owl in braille characters (29 lines).
-const OWL_ART: &[&str] = &[
+/// Mascot ASCII art
+const MASCOT_ART: &[&str] = &[
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣴⣶⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⠟⠉⠉⠙⠻⣶⣄⠀⠀⠀⠀⠀⠀⠀⠀⢀⡀⠀⠀⠀⠀⠀⢀⣴⠟⠋⠀⠀⠀⠙⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀",
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⠃⠀⣠⡤⢄⡀⠀⠙⢷⣄⢀⣀⣀⣀⣾⢦⡿⣡⡶⣂⣀⣀⣴⠟⠁⠀⣠⠖⢋⠶⡀⢹⡇⠀⠀⠀⠀⠀⠀⠀⠀",
@@ -41,13 +41,30 @@ const OWL_ART: &[&str] = &[
     "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠙⠛⠛⠛⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
 ];
 
-/// Draw the mascot in ACCENT color (static).
+/// Height threshold below which a centered slice of the mascot is shown.
+const COMPACT_MASCOT_HEIGHT: u16 = 14;
+
+fn mascot_lines_for_height(height: u16) -> &'static [&'static str] {
+    if height < COMPACT_MASCOT_HEIGHT {
+        let n = MASCOT_ART.len();
+        let h = height as usize;
+        let start = n.saturating_sub(h) / 2;
+        let end = (start + h).min(n);
+        &MASCOT_ART[start..end]
+    } else {
+        MASCOT_ART
+    }
+}
+
+/// Draw the mascot in ACCENT color. Uses a centered slice on small terminals.
 pub(crate) fn draw_mascot(f: &mut Frame, area: Rect) {
-    let lines: Vec<Line> = OWL_ART
+    let art = mascot_lines_for_height(area.height);
+
+    let lines: Vec<Line> = art
         .iter()
         .map(|s| Line::from(Span::styled(s.to_string(), Style::default().fg(ACCENT))))
         .collect();
 
-    let paragraph = Paragraph::new(lines).alignment(Alignment::Center);
+    let paragraph = Paragraph::new(lines).alignment(HorizontalAlignment::Center);
     f.render_widget(paragraph, area);
 }

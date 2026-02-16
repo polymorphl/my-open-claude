@@ -1,5 +1,7 @@
 //! Handling of chat completion results and conversation save.
 
+use std::time::{Duration, Instant};
+
 use serde_json::Value;
 
 use crate::core::config::Config;
@@ -9,23 +11,33 @@ use crate::core::llm;
 use super::app;
 use super::constants;
 
+const SAVE_ERROR_TOAST_DURATION: Duration = Duration::from_secs(4);
+
 /// Save the current conversation if it has unsaved changes.
+/// Logs and surfaces save errors via a toast.
+/// Persists app.messages (including ToolLog) so tool logs are visible when re-opening.
 pub(super) fn save_conversation_if_dirty(
     app: &mut app::App,
-    api_messages: &Option<Vec<Value>>,
+    _api_messages: &Option<Vec<Value>>,
     config: &Config,
 ) {
     if !app.is_dirty() {
         return;
     }
-    let Some(msgs) = api_messages else { return };
+    let msgs = app::App::messages_to_persist_format(&app.messages, &app.message_timestamps);
     if msgs.is_empty() {
         return;
     }
-    let title = first_message_preview(msgs, constants::TITLE_PREVIEW_MAX_LEN);
-    if let Ok(id) = history::save_conversation(app.conversation_id(), &title, msgs, config) {
-        app.set_conversation_id(Some(id));
-        app.clear_dirty();
+    let title = first_message_preview(&msgs, constants::TITLE_PREVIEW_MAX_LEN);
+    match history::save_conversation(app.conversation_id(), &title, &msgs, config) {
+        Ok(id) => {
+            app.set_conversation_id(Some(id));
+            app.clear_dirty();
+        }
+        Err(e) => {
+            log::warn!("Failed to save conversation: {}", e);
+            app.set_save_error_toast(Instant::now() + SAVE_ERROR_TOAST_DURATION);
+        }
     }
 }
 
@@ -45,21 +57,25 @@ pub(super) fn handle_chat_result(
             usage,
         }) => {
             app.token_usage = Some(usage);
-            if tool_log_already_streamed {
-                app.clear_progress_after_last_user();
-            } else {
+            if !tool_log_already_streamed {
                 for line in tool_log {
                     app.push_tool_log(line);
                 }
             }
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Bottom;
-            let title = first_message_preview(&messages, constants::TITLE_PREVIEW_MAX_LEN);
-            if let Ok(id) =
-                history::save_conversation(app.conversation_id(), &title, &messages, config)
-            {
-                app.set_conversation_id(Some(id));
-                app.clear_dirty();
+            let to_save =
+                app::App::messages_to_persist_format(&app.messages, &app.message_timestamps);
+            let title = first_message_preview(&to_save, constants::TITLE_PREVIEW_MAX_LEN);
+            match history::save_conversation(app.conversation_id(), &title, &to_save, config) {
+                Ok(id) => {
+                    app.set_conversation_id(Some(id));
+                    app.clear_dirty();
+                }
+                Err(e) => {
+                    log::warn!("Failed to save conversation: {}", e);
+                    app.set_save_error_toast(std::time::Instant::now() + SAVE_ERROR_TOAST_DURATION);
+                }
             }
             *api_messages = Some(messages);
         }

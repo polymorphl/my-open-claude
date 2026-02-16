@@ -24,27 +24,28 @@ cargo test test_name            # Run specific test by name
 cargo test module::test_name    # Run test in specific module
 cargo test --test integration   # Run tests in a specific test file
 cargo test -- --nocapture       # Show print/debug statements
+cargo test -v test_specific     # Verbose output for specific test
 
 # Run Application
 cargo run                       # Launch TUI
 cargo run -- -p "prompt"        # Single-prompt mode
 ```
 
-## Code Style Guidelines
-
-### Project Architecture
+## Project Structure
 - Strict layered architecture:
   - `core/`: Business logic (NO UI dependencies)
   - `tui/`: Text User Interface
-  - `main.rs`: Application entry point and orchestration
+  - `main.rs`: Application entry point
+
+## Code Style Guidelines
 
 ### Import Organization
 ```rust
-// Import groups (blank lines between):
+// Import priority (blank lines between groups):
 use std::collections::HashMap;     // Standard library
 use tokio::sync::Mutex;            // External async primitives
-use serde::{Deserialize, Serialize}; # Serialization
-use crate::core::config::Config;   # Internal modules
+use serde::{Deserialize, Serialize}; // Serialization
+use crate::core::config::Config;   // Internal modules
 ```
 
 ### Naming Conventions
@@ -54,78 +55,57 @@ use crate::core::config::Config;   # Internal modules
 - Modules: `snake_case`
 
 ### Type Handling
-- Use explicit type annotations
-- Prefer concrete types over generics
-- Leverage `Arc<T>` for shared async ownership
-- Use `Option<T>` and `Result<T, E>` for robust error management
+- Explicit type annotations
+- Concrete types over generics
+- `Arc<T>` for shared async ownership
+- `Option<T>` and `Result<T, E>` for robust error management
 
 ### Error Handling Strategy
-- Create domain-specific error enums
+- Domain-specific error enums
 - Implement `std::fmt::Display` and `std::error::Error`
-- Use `thiserror` or manual implementations
+- Use `thiserror` for implementations
 - Provide context in error messages
-
-Example Error Enum:
-```rust
-#[derive(Debug)]
-pub enum ApiError {
-    Authentication(String),
-    NetworkFailure { 
-        context: String, 
-        source: std::io::Error 
-    },
-    Parsing(serde_json::Error),
-}
-```
 
 ### Testing Philosophy
 - Unit tests in `#[cfg(test)]` modules
-- Test successful and error scenarios
+- Cover successful and error scenarios
 - Use `#[test]` attribute
 - Aim for comprehensive edge case coverage
-- Leverage `proptest` for property-based testing
+- Use `proptest` for property-based testing
 
 ### Async Best Practices
 - Use `tokio` runtime
 - Leverage `CancellationToken`
-- Ensure thread-safety with `Send + Sync`
-- Use `.await` judiciously
-
-### Code Organization Heuristics
-- One responsibility per module
-- Document public APIs with `///`
-- Extract code when file exceeds ~300 lines
-- Prefer composition over inheritance
-
-### Dependency Management
-1. `core/` MUST NOT import `tui`
-2. `tui/` MAY import `core`
-3. `main.rs` orchestrates cross-module interactions
+- Ensure `Send + Sync`
+- Judicious `.await`
 
 ### Performance Considerations
 - Minimize dynamic allocations
-- Prefer borrowing (`&T`) over ownership
-- Use `#[inline]` for small, frequently called functions
+- Prefer borrowing over ownership
+- `#[inline]` for small functions
 - Profile with `cargo flamegraph`
 
-## Configuration & Environment
+## Environment & Configuration
 Required Environment Variables:
 - `OPENROUTER_API_KEY`: API authentication
-- `OPENROUTER_MODEL`: Default language model
+- `OPENROUTER_MODEL`: Default model
 - `MAX_CONVERSATIONS`: History limit
 
-## Continuous Integration Requirements
+## Continuous Integration
 Every contribution must pass:
 - `cargo fmt --check`
 - `cargo clippy --all-targets -- -D warnings`
 - `cargo test`
 
 ## Development Workflow
-- Use feature branches
-- Squash commits before merging
-- Write meaningful commit messages
-- Update documentation alongside code changes
+- Feature branches
+- Squash commits
+- Meaningful commit messages
+- Update documentation with code changes
+
+## Build Verification
+Always `cargo build` after modifications to verify compilation.
 
 ## Community
 - [Code of Conduct](CODE_OF_CONDUCT.md)
-- [License](LICENSE) — Polyform Noncommercial 1.0.0 (no commercial use)
+- [License](LICENSE) — Polyform Noncommercial 1.0.0

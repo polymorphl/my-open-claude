@@ -51,13 +51,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load environment variables from .env file
     dotenv().ok();
 
-    // Initialize logging (warn level by default; use RUST_LOG=debug for verbose)
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
-        .try_init()
-        .ok();
-
-    // Parse command-line arguments
+    // Parse command-line arguments (before logger init to choose log target)
     let args = Args::parse();
+
+    // Initialize logging. In TUI mode, write to file to avoid corrupting the display.
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"));
+    if args.prompt.is_none() {
+        // TUI mode: logs to file; stderr would corrupt the alternate screen
+        let log_path = core::paths::cache_dir().map(|d| d.join("my-open-claude.log"));
+        if let Some(path) = log_path
+            && let Ok(file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+        {
+            logger.target(env_logger::Target::Pipe(Box::new(file)));
+        }
+    }
+    logger.try_init().ok();
 
     // Load application configuration (print user-friendly message; exit uses Display not Debug)
     let config = core::config::load().unwrap_or_else(|e| {
@@ -98,10 +110,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let join_result: Result<std::io::Result<()>, tokio::task::JoinError> =
         tokio::task::spawn_blocking(move || tui::run(config_clone, workspace)).await;
 
-    // Handle potential TUI thread failures
-    join_result.map_err(|_| {
-        Box::new(std::io::Error::other("TUI thread panicked")) as Box<dyn std::error::Error>
-    })??;
+    // Handle potential TUI thread failures; surface the actual panic message for debugging
+    match join_result {
+        Ok(io_result) => io_result?,
+        Err(join_err) => {
+            if let Ok(panic) = join_err.try_into_panic() {
+                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    format!("{:?}", panic)
+                };
+                eprintln!("TUI panic: {}", msg);
+            }
+            return Err(Box::new(std::io::Error::other("TUI thread panicked"))
+                as Box<dyn std::error::Error>);
+        }
+    }
 
     Ok(())
 }

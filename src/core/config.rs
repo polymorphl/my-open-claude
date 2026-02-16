@@ -12,6 +12,7 @@ use crate::core::persistence;
 /// * `base_url`: Base URL for the AI service API
 /// * `api_key`: Authentication API key for the service
 /// * `max_conversations`: Maximum number of conversations to retain
+/// * `show_timestamps`: Whether to show timestamps next to messages in the TUI
 #[derive(Debug, Clone)]
 pub struct Config {
     pub openai_config: OpenAIConfig,
@@ -19,6 +20,7 @@ pub struct Config {
     pub base_url: String,
     pub api_key: String,
     pub max_conversations: u32,
+    pub show_timestamps: bool,
 }
 
 /// Errors that can occur during configuration loading.
@@ -65,6 +67,7 @@ const DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 /// * `OPENROUTER_API_KEY`: Required API key
 /// * `OPENROUTER_MODEL`: Preferred model (optional)
 /// * `MY_OPEN_CLAUDE_MAX_CONVERSATIONS`: Maximum conversations to retain (optional)
+/// * `MY_OPEN_CLAUDE_SHOW_TIMESTAMPS`: Set to 1 or true to show timestamps next to messages (optional)
 ///
 /// # Returns
 /// A `Result` containing the loaded `Config` or a `ConfigError`
@@ -89,6 +92,10 @@ pub fn load() -> Result<Config, ConfigError> {
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(DEFAULT_MAX_CONVERSATIONS);
 
+    let show_timestamps = env::var("MY_OPEN_CLAUDE_SHOW_TIMESTAMPS")
+        .map(|s| s != "0" && !s.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
+
     // Create OpenAI/OpenRouter configuration
     let openai_config = OpenAIConfig::new()
         .with_api_base(&base_url)
@@ -100,5 +107,6 @@ pub fn load() -> Result<Config, ConfigError> {
         base_url,
         api_key,
         max_conversations,
+        show_timestamps,
     })
 }

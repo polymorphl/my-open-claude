@@ -19,7 +19,7 @@ impl super::Tool for WriteTool {
     fn definition(&self) -> Value {
         tool_definition(
             self.name(),
-            "Write content to a file",
+            "Write content to a file. OVERWRITES the entire file. For existing files that need updates, prefer Edit (targeted search-and-replace) to preserve unchanged content.",
             json!({
                 "type": "object",
                 "required": ["file_path", "content"],

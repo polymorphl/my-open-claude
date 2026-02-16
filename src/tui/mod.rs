@@ -6,6 +6,7 @@ mod constants;
 mod draw;
 mod handlers;
 mod shortcuts;
+mod syntax;
 mod text;
 
 #[allow(unused_imports)]
@@ -62,6 +63,10 @@ impl TerminalGuard {
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
+        let _ = execute!(
+            std::io::stdout(),
+            crossterm::event::PopKeyboardEnhancementFlags
+        );
         let _ = disable_raw_mode();
         let _ = execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
         set_cursor_shape(false); // restore default cursor
@@ -89,7 +94,12 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
     );
 
     let model_name = models::resolve_model_display_name(&config.model_id);
-    let mut app = App::new(config.model_id.clone(), model_name, workspace);
+    let mut app = App::new(
+        config.model_id.clone(),
+        model_name,
+        workspace,
+        config.show_timestamps,
+    );
     let mut api_messages: Option<Vec<Value>> = None;
     let mut pending_chat: Option<PendingChat> = None;
     let mut pending_model_fetch: Option<mpsc::Receiver<Result<Vec<models::ModelInfo>, String>>> =
@@ -98,6 +108,15 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
     // Enable mouse events for credits click
     execute!(io::stdout(), crossterm::event::EnableMouseCapture)?;
 
+    // Kitty keyboard protocol: Alt+key as single event with modifier (Ghostty, WezTerm, kitty, etc.)
+    let _ = execute!(
+        io::stdout(),
+        crossterm::event::PushKeyboardEnhancementFlags(
+            crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | crossterm::event::KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+        )
+    );
+
     // Start credits fetch in background
     let mut pending_credits_fetch = Some(spawn_credits_fetch(Arc::clone(&config), &rt));
 
@@ -105,9 +124,15 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
         if let Some(ref credits_rx) = pending_credits_fetch
             && let Ok(result) = credits_rx.try_recv()
         {
-            if let Ok((total, used)) = result {
-                app.credit_data = Some((total, used));
-                app.credits_last_fetched_at = Some(Instant::now());
+            match result {
+                Ok((total, used)) => {
+                    app.credit_data = Some((total, used));
+                    app.credits_last_fetched_at = Some(Instant::now());
+                    app.credits_fetch_error = None;
+                }
+                Err(e) => {
+                    app.credits_fetch_error = Some(e);
+                }
             }
             pending_credits_fetch = None;
         }
@@ -170,9 +195,56 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
                 Event::Mouse(mouse) => {
                     let _ = handlers::handle_mouse(mouse, &mut app);
                 }
+                Event::Paste(pasted) => {
+                    // Insert pasted text at cursor when input has focus (no popup open).
+                    let input_focus = app.confirm_popup.is_none()
+                        && app.model_selector.is_none()
+                        && app.history_selector.is_none();
+                    if input_focus {
+                        let cursor = app.input_cursor.min(app.input.len());
+                        let cursor_byte = app.input.floor_char_boundary(cursor);
+                        let before = app.input[..cursor_byte].to_string();
+                        let after = app.input[cursor_byte..].to_string();
+                        app.input = before + &pasted + &after;
+                        app.input_cursor = cursor_byte + pasted.len();
+                    }
+                }
                 Event::Key(key) => {
+                    // When Esc would start Option+key (meta), drain: terminals (Ghostty, etc.) send
+                    // Esc+key; the second byte may arrive with delay—loop with short polls.
+                    let key_to_handle =
+                        if handlers::would_esc_start_meta_sequence(&key, &app, &pending_chat) {
+                            let step_ms = 25u64;
+                            let mut elapsed = 0u64;
+                            let mut next_key = None;
+                            while elapsed < constants::ESC_SEQUENCE_DRAIN_MS {
+                                if event::poll(std::time::Duration::from_millis(step_ms))? {
+                                    match event::read()? {
+                                        Event::Key(next) => {
+                                            next_key = Some(next);
+                                            break;
+                                        }
+                                        Event::Mouse(m) => {
+                                            let _ = handlers::handle_mouse(m, &mut app);
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                elapsed += step_ms;
+                            }
+                            match next_key {
+                                Some(next) => {
+                                    app.escape_pending = true;
+                                    next
+                                }
+                                None => key,
+                            }
+                        } else {
+                            key
+                        };
                     let result = handlers::handle_key(
-                        key,
+                        key_to_handle,
                         handlers::HandleKeyContext {
                             app: &mut app,
                             config: &config,

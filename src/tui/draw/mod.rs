@@ -9,6 +9,10 @@ mod welcome_mascot;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use std::time::Instant;
 
 use crate::core::commands;
 
@@ -17,14 +21,19 @@ use super::constants::ACCENT;
 
 pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     let is_welcome = app.messages.is_empty();
+    if is_welcome {
+        app.history_area_rect = None;
+        app.message_line_ranges.clear();
+    }
 
     if is_welcome {
+        let center_height = 35.min(area.height.saturating_sub(4));
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(2),
                 Constraint::Min(0),
-                Constraint::Length(35),
+                Constraint::Length(center_height),
                 Constraint::Min(0),
                 Constraint::Length(2),
             ])
@@ -62,5 +71,36 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
     if let Some(ref mut selector) = app.history_selector {
         history_selector_popup::draw_history_selector_popup(f, area, selector);
+    }
+
+    // Toast: top right, below header (y=2). Opaque background so it's visible over history.
+    draw_toast(f, area, " Copied ", &mut app.copy_toast_until);
+    draw_toast(f, area, " Save failed ", &mut app.save_error_toast_until);
+}
+
+fn draw_toast(f: &mut Frame, area: Rect, text: &str, deadline: &mut Option<Instant>) {
+    if let Some(d) = *deadline {
+        if d > Instant::now() {
+            const HEADER_HEIGHT: u16 = 2;
+            let toast_width = text.len() as u16 + 2;
+            let toast_height = 3u16; // borders + content
+            let toast_area = Rect {
+                x: area.x + area.width.saturating_sub(toast_width).saturating_sub(1),
+                y: area.y + HEADER_HEIGHT,
+                width: toast_width,
+                height: toast_height,
+            };
+            f.render_widget(Clear, toast_area);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(ACCENT))
+                .style(Style::default().bg(Color::Black));
+            let para = Paragraph::new(Line::from(text))
+                .block(block)
+                .style(Style::default().fg(ACCENT).bg(Color::Black));
+            f.render_widget(para, toast_area);
+        } else {
+            *deadline = None;
+        }
     }
 }

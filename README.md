@@ -3,7 +3,9 @@
 [![CI](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml/badge.svg)](https://github.com/polymorphl/my-open-claude/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Polyform%20Noncommercial%201.0.0-blue)](LICENSE)
 
-![my-open-claude TUI](screenshot.png)
+| Welcome | Conversation |
+|---------|--------------|
+| ![Welcome screen](screenshots/welcome.png) | ![Chat conversation](screenshots/conversation.png) |
 
 LLM-powered coding assistant written in Rust. It understands code and performs actions through tool calls, with a CLI and an interactive TUI chat mode.
 
@@ -13,8 +15,8 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 - **Single-prompt mode**: send one request and exit without opening the TUI
 - **Tool calling**: OpenAI-compatible API (read, write, bash, etc.)
 - **OpenRouter**: use models via the OpenRouter API (or other OpenAI-compatible backends)
-- **Model selector**: choose from tool-capable models (Alt+M / F2), with persisted selection
-- **Persistent conversation history**: conversations saved to disk; load with Alt+H, new conversation with Alt+N
+- **Model selector**: choose from tool-capable models (Alt+M), with persisted selection
+- **Persistent conversation history**: conversations saved to disk; load with Alt+H, new conversation with Ctrl+N
 - **Credit balance**: OpenRouter balance displayed in the header; click to open your account settings
 
 ## Prerequisites
@@ -48,6 +50,7 @@ The app relies on environment variables. Use a `.env` file in the project root:
 | `OPENROUTER_MODEL` | No | Default model ID (used when no last model saved). Default: `anthropic/claude-haiku-4.5` |
 | `OPENROUTER_BASE_URL` | No | API base URL. Default: `https://openrouter.ai/api/v1` |
 | `MY_OPEN_CLAUDE_MAX_CONVERSATIONS` | No | Max number of conversations to keep; older ones are pruned. Default: 50. Set to 0 for no limit. |
+| `MY_OPEN_CLAUDE_SHOW_TIMESTAMPS` | No | Show timestamps (HH:MM) next to messages in the TUI. Default: enabled. Set to 0 or false to disable. |
 
 ### Configuration paths
 
@@ -80,7 +83,7 @@ The header shows your OpenRouter credit balance (total minus usage). Click it to
 ### Conversation history
 
 - **Alt+H** : open conversation history
-- **Alt+N** : new conversation (current one is saved first)
+- **Ctrl+N** : new conversation (current one is saved first)
 - Conversations are saved automatically after each turn and on exit. A `*` in the title indicates unsaved changes.
 
 ### Model selection
@@ -115,6 +118,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 - Run tests: `cargo test`
 - Check formatting: `cargo fmt --check` (or `cargo fmt` to format)
 - Lint: `cargo clippy --all-targets -- -D warnings`
+- [Architecture & flows](docs/ARCHITECTURE.md) — diagrams and data flow
 
 ## Project structure
 
@@ -123,7 +127,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 - `src/core/llm/` — chat, agent loop, tool execution, streaming
 - `src/core/models/` — model discovery, 24h cache, filtering
 - `src/core/tools/` — read, write, edit, bash, grep, list_dir, glob
-- `src/tui/` — terminal UI: app state, handlers (key/mouse), draw (header, history, input, popups)
+- `src/tui/` — terminal UI: app/ (state, messages), handlers (keyboard/mouse), draw (header, history, input, popups)
 
 ## Community
 
