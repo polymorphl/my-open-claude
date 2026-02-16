@@ -98,10 +98,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let join_result: Result<std::io::Result<()>, tokio::task::JoinError> =
         tokio::task::spawn_blocking(move || tui::run(config_clone, workspace)).await;
 
-    // Handle potential TUI thread failures
-    join_result.map_err(|_| {
-        Box::new(std::io::Error::other("TUI thread panicked")) as Box<dyn std::error::Error>
-    })??;
+    // Handle potential TUI thread failures; surface the actual panic message for debugging
+    match join_result {
+        Ok(io_result) => io_result?,
+        Err(join_err) => {
+            if let Ok(panic) = join_err.try_into_panic() {
+                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    format!("{:?}", panic)
+                };
+                eprintln!("TUI panic: {}", msg);
+            }
+            return Err(Box::new(std::io::Error::other("TUI thread panicked"))
+                as Box<dyn std::error::Error>);
+        }
+    }
 
     Ok(())
 }

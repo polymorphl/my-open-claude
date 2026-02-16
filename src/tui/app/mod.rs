@@ -104,6 +104,10 @@ pub struct App {
     pub(crate) hovering_credits: bool,
     /// (msg_idx, start_line, end_line) for each User/Assistant; updated each draw.
     pub(crate) message_line_ranges: Vec<(usize, usize, usize)>,
+    /// Unix timestamps (seconds) for each message; parallel to messages. None when loading from history.
+    pub(crate) message_timestamps: Vec<Option<u64>>,
+    /// Whether to show timestamps next to message labels (from MY_OPEN_CLAUDE_SHOW_TIMESTAMPS).
+    pub(crate) show_timestamps: bool,
     /// Rect of history text area; for click hit testing.
     pub(crate) history_area_rect: Option<Rect>,
     /// Mouse is over a message block; used for cursor style.
@@ -129,7 +133,12 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(model_id: String, model_name: String, workspace: Workspace) -> Self {
+    pub fn new(
+        model_id: String,
+        model_name: String,
+        workspace: Workspace,
+        show_timestamps: bool,
+    ) -> Self {
         let context_length = crate::core::models::resolve_context_length(&model_id);
         Self {
             messages: vec![],
@@ -152,6 +161,8 @@ impl App {
             credits_fetch_error: None,
             hovering_credits: false,
             message_line_ranges: vec![],
+            message_timestamps: vec![],
+            show_timestamps,
             history_area_rect: None,
             hovering_message_block: false,
             copy_toast_until: None,
@@ -193,6 +204,7 @@ impl App {
     /// Reset to a new empty conversation.
     pub(crate) fn new_conversation(&mut self) {
         self.messages.clear();
+        self.message_timestamps.clear();
         self.current_conversation_id = None;
         self.dirty = false;
         self.scroll = ScrollPosition::default();

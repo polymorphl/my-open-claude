@@ -55,7 +55,7 @@ pub(super) fn parse_message_segments(content: &str) -> Vec<MessageSegment<'_>> {
     segments
 }
 
-/// Parse inline Markdown: **bold**, `code`, and headings (# / ## / ###) at line start.
+/// Parse inline Markdown: **bold**, `code`, headings, bullet/numbered lists, [links](url).
 pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let trimmed = s.trim_start();
@@ -70,16 +70,87 @@ pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
         }
         return spans;
     }
-    // Otherwise parse ** and ` in the rest
+    // Bullet list: - or * at line start
+    if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+        spans.push(Span::styled(
+            "• ",
+            Style::default().fg(ACCENT),
+        ));
+        spans.extend(parse_markdown_inline_inner(trimmed.get(2..).unwrap_or("")));
+        return spans;
+    }
+    // Table row: | cell1 | cell2 |
+    if trimmed.starts_with('|') && trimmed.contains('|') {
+        let cells: Vec<&str> = trimmed.split('|').map(|c| c.trim()).filter(|c| !c.is_empty()).collect();
+        if !cells.is_empty() {
+            let mut first = true;
+            for cell in cells {
+                if !first {
+                    spans.push(Span::styled(" │ ", Style::default().fg(ACCENT)));
+                }
+                spans.extend(parse_markdown_inline_inner(cell));
+                first = false;
+            }
+            return spans;
+        }
+    }
+    // Numbered list: 1. 2. etc. at line start
+    if let Some((num, rest_after)) = parse_numbered_list_prefix(trimmed) {
+        spans.push(Span::styled(
+            format!("{} ", num),
+            Style::default().fg(ACCENT),
+        ));
+        spans.extend(parse_markdown_inline_inner(rest_after));
+        return spans;
+    }
+    spans.extend(parse_markdown_inline_inner(s));
+    spans
+}
+
+/// Parse "N. " or "N) " at start. Returns (number, rest) or None.
+fn parse_numbered_list_prefix(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim_start();
+    let mut digits = 0;
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            digits += 1;
+        } else {
+            break;
+        }
+    }
+    if digits == 0 {
+        return None;
+    }
+    let num = &s[..digits];
+    let rest = &s[digits..];
+    if rest.starts_with(". ") || rest.starts_with(") ") {
+        Some((num, &rest[2..]))
+    } else {
+        None
+    }
+}
+
+/// Parse **bold**, `code`, [text](url) in the rest of a line.
+fn parse_markdown_inline_inner(s: &str) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
     let mut rest = s;
     while !rest.is_empty() {
         let next_bold = rest.find("**");
         let next_code = rest.find('`');
-        let (use_bold, pos) = match (next_bold, next_code) {
-            (Some(b), None) => (true, b),
-            (None, Some(c)) => (false, c),
-            (Some(b), Some(c)) => (b <= c, b.min(c)),
-            (None, None) => {
+        let next_link = rest.find('[');
+        let (which, pos) = match (next_bold, next_code, next_link) {
+            (Some(b), None, None) => (0, b),
+            (None, Some(c), None) => (1, c),
+            (None, None, Some(l)) => (2, l),
+            (Some(b), Some(c), None) => (if b <= c { 0 } else { 1 }, b.min(c)),
+            (Some(b), None, Some(l)) => (if b <= l { 0 } else { 2 }, b.min(l)),
+            (None, Some(c), Some(l)) => (if c <= l { 1 } else { 2 }, c.min(l)),
+            (Some(b), Some(c), Some(l)) => {
+                let p = b.min(c).min(l);
+                let which = if p == b { 0 } else if p == c { 1 } else { 2 };
+                (which, p)
+            }
+            (None, None, None) => {
                 spans.push(Span::raw(rest.to_string()));
                 break;
             }
@@ -88,7 +159,7 @@ pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
             spans.push(Span::raw(rest[..pos].to_string()));
         }
         rest = &rest[pos..];
-        if use_bold && rest.starts_with("**") {
+        if which == 0 && rest.starts_with("**") {
             rest = &rest[2..];
             if let Some(end) = rest.find("**") {
                 spans.push(Span::styled(
@@ -99,7 +170,32 @@ pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
             } else {
                 spans.push(Span::raw("**".to_string()));
             }
-        } else if rest.starts_with('`') {
+        } else if which == 2 && rest.starts_with('[') {
+            rest = &rest[1..];
+            if let Some(end_br) = rest.find(']') {
+                let text = &rest[..end_br];
+                rest = &rest[end_br + 1..];
+                if rest.starts_with('(') {
+                    rest = &rest[1..];
+                    if let Some(end_paren) = rest.find(')') {
+                        let _url = &rest[..end_paren];
+                        rest = &rest[end_paren + 1..];
+                        spans.push(Span::styled(
+                            text.to_string(),
+                            Style::default()
+                                .fg(ACCENT)
+                                .add_modifier(Modifier::UNDERLINED),
+                        ));
+                    } else {
+                        spans.push(Span::raw(format!("[{}]", text)));
+                    }
+                } else {
+                    spans.push(Span::raw(format!("[{}]", text)));
+                }
+            } else {
+                spans.push(Span::raw("[".to_string()));
+            }
+        } else if which == 1 && rest.starts_with('`') {
             rest = &rest[1..];
             if let Some(end) = rest.find('`') {
                 spans.push(Span::styled(
@@ -115,44 +211,15 @@ pub(super) fn parse_markdown_inline(s: &str) -> Vec<Span<'static>> {
     spans
 }
 
-/// Split text into lines of max byte width `width`, only cutting at UTF-8 character boundaries.
+/// Split text into lines of max width (columns). Uses textwrap for correct UTF-8 handling.
 fn wrap_text(s: &str, width: usize) -> Vec<String> {
     if width == 0 {
         return vec![s.to_string()];
     }
-    let mut out = Vec::new();
-    let mut rest = s;
-    while !rest.is_empty() {
-        if rest.len() <= width {
-            out.push(rest.to_string());
-            break;
-        }
-        // Last byte index that is a character boundary and <= width.
-        let boundary = rest
-            .char_indices()
-            .rfind(|(i, _)| *i <= width)
-            .map(|(i, _)| i);
-        let boundary = match boundary {
-            Some(b) if b > 0 => b,
-            _ => {
-                // First character exceeds width, cut after the first character.
-                rest.char_indices()
-                    .nth(1)
-                    .map(|(i, _)| i)
-                    .unwrap_or(rest.len())
-            }
-        };
-        let (chunk, next) = if let Some(space) = rest[..boundary].rfind(' ') {
-            let chunk = rest[..space].trim_end();
-            let next = rest[space..].trim_start();
-            (chunk, next)
-        } else {
-            (&rest[..boundary], rest[boundary..].trim_start())
-        };
-        out.push(chunk.to_string());
-        rest = next;
-    }
-    out
+    textwrap::wrap(s, width)
+        .into_iter()
+        .map(|cow| cow.into_owned())
+        .collect()
 }
 
 /// Split a message into display lines respecting message newlines, then wrap to `width`.
@@ -279,6 +346,31 @@ mod tests {
         let spans = parse_markdown_inline("## Section");
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].content.as_ref(), "Section");
+    }
+
+    #[test]
+    fn parse_markdown_inline_bullet_list() {
+        let spans = parse_markdown_inline("- item one");
+        assert!(spans.len() >= 2);
+        assert_eq!(spans[0].content.as_ref(), "• ");
+    }
+
+    #[test]
+    fn parse_markdown_inline_numbered_list() {
+        let spans = parse_markdown_inline("1. first");
+        assert!(spans.len() >= 2);
+    }
+
+    #[test]
+    fn parse_markdown_inline_link() {
+        let spans = parse_markdown_inline("See [docs](https://example.com) for more.");
+        assert!(spans.len() >= 2);
+    }
+
+    #[test]
+    fn parse_markdown_inline_table_row() {
+        let spans = parse_markdown_inline("| name | value |");
+        assert!(!spans.is_empty());
     }
 
     #[test]

@@ -17,6 +17,73 @@ fn repeat_char(c: char, n: usize) -> String {
     std::iter::repeat_n(c, n).collect()
 }
 
+const TOOL_LOG_PREFIX: &str = "→ ";
+
+/// Parse tool log format "→ ToolName: args" into (tool_name, args) if it matches.
+fn parse_tool_log(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim_start();
+    if !s.starts_with(TOOL_LOG_PREFIX) {
+        return None;
+    }
+    let rest = &s[TOOL_LOG_PREFIX.len()..];
+    let colon_pos = rest.find(": ")?;
+    let tool_name = rest[..colon_pos].trim();
+    let args = rest[colon_pos + 2..].trim_start();
+    if tool_name.is_empty() {
+        None
+    } else {
+        Some((tool_name, args))
+    }
+}
+
+/// Render tool log lines with structured styling: tool name highlighted, args wrapped.
+fn add_tool_log_lines(lines: &mut Vec<Line<'static>>, s: &str, content_width: usize) {
+    let marker_style = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
+    let tool_style = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
+    let args_style = Style::default().fg(ACCENT_SECONDARY);
+
+    let prefix = "  ┃ ";
+    let prefix_len = prefix.chars().count();
+
+    if let Some((tool_name, args)) = parse_tool_log(s) {
+        let header = format!("{}: ", tool_name);
+        let header_char_len = header.chars().count();
+        let available = content_width.saturating_sub(prefix_len);
+        let args_width = available.saturating_sub(header_char_len);
+
+        let mut first_line = true;
+        for chunk in wrap_message(args, args_width.max(1)) {
+            let mut spans = vec![
+                Span::styled(prefix.to_string(), marker_style),
+            ];
+            if first_line {
+                spans.push(Span::styled(header.to_string(), tool_style));
+                first_line = false;
+            } else {
+                spans.push(Span::styled(
+                    " ".repeat(header_char_len.min(available)),
+                    Style::default(),
+                ));
+            }
+            spans.push(Span::styled(chunk, args_style));
+            lines.push(Line::from(spans));
+        }
+        if first_line {
+            lines.push(Line::from(vec![
+                Span::styled(prefix.to_string(), marker_style),
+                Span::styled(format!("{} ", header), tool_style),
+            ]));
+        }
+    } else {
+        for chunk in super::super::text::wrap_message(s, content_width.saturating_sub(prefix_len).max(1)) {
+            lines.push(Line::from(vec![
+                Span::styled(prefix.to_string(), marker_style),
+                Span::styled(format!("{} ", chunk), args_style),
+            ]));
+        }
+    }
+}
+
 /// Parameters for rendering a message block.
 struct MessageBlockParams<'a> {
     label: &'a str,
@@ -26,6 +93,8 @@ struct MessageBlockParams<'a> {
     is_error: bool,
     is_user: bool,
     stream_cursor: bool,
+    /// Unix timestamp (seconds) when message was created; None for loaded history.
+    timestamp: Option<u64>,
 }
 
 /// Add a User or Assistant message block with borders, code blocks, and separator.
@@ -41,8 +110,17 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
 
     let start = lines.len();
 
-    // Top border: "┌─ Label ───...──┐"
-    let top_label = format!("┌─ {} ", p.label);
+    // Top border: "┌─ Label ───...──┐" or "┌─ Label 14:32 ───...──┐"
+    let time_suffix = p.timestamp.map(|unix_secs| {
+        let hour = (unix_secs % 86400) / 3600;
+        let min = (unix_secs % 3600) / 60;
+        format!(" {:02}:{:02}", hour, min)
+    }).unwrap_or_default();
+    let top_label = if time_suffix.is_empty() {
+        format!("┌─ {} ", p.label)
+    } else {
+        format!("┌─ {} {} ", p.label, time_suffix.trim())
+    };
     let top_trail_len = p.wrap_width.saturating_sub(top_label.chars().count() + 1);
     let top_line = format!("{}{}┐", top_label, repeat_char('─', top_trail_len.max(0)));
     lines.push(Line::from(Span::styled(top_line, border_style)));
@@ -152,6 +230,11 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
 
     let msg_count = app.messages.len();
     for (msg_idx, msg) in app.messages.iter().enumerate() {
+        let timestamp = if app.show_timestamps {
+            app.message_timestamps.get(msg_idx).copied().flatten()
+        } else {
+            None
+        };
         match msg {
             ChatMessage::User(s) => {
                 let (start, end) = add_message_block(
@@ -164,6 +247,7 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
                         is_error: false,
                         is_user: true,
                         stream_cursor: false,
+                        timestamp,
                     },
                 );
                 message_line_ranges.push((msg_idx, start, end));
@@ -182,17 +266,13 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
                         is_error,
                         is_user: false,
                         stream_cursor: is_last_and_streaming,
+                        timestamp,
                     },
                 );
                 message_line_ranges.push((msg_idx, start, end));
             }
             ChatMessage::ToolLog(s) => {
-                let tool_style = Style::default().fg(ACCENT_SECONDARY);
-                let marker_style = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
-                lines.push(Line::from(vec![
-                    Span::styled("  ┃ ", marker_style),
-                    Span::styled(format!("{} ", s), tool_style),
-                ]));
+                add_tool_log_lines(&mut lines, s, content_width);
             }
             ChatMessage::Thinking => {
                 lines.push(Line::from(vec![Span::styled(

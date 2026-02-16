@@ -1,10 +1,18 @@
 //! Message handling for the chat history.
 
 use serde_json::Value;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::core::message;
 
 use super::{App, ChatMessage};
+
+fn unix_timestamp_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
 
 impl App {
     /// Populate messages from persisted format (user, assistant, tool_log).
@@ -12,6 +20,7 @@ impl App {
     /// "[Unsupported message format]" with a log warning instead of silently omitted.
     pub(crate) fn set_messages_from_api(&mut self, api_messages: &[Value]) {
         self.messages.clear();
+        self.message_timestamps.clear();
         for msg in api_messages {
             let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
             match role {
@@ -43,8 +52,10 @@ impl App {
                     };
                     if role == "user" {
                         self.messages.push(ChatMessage::User(content));
+                        self.message_timestamps.push(None);
                     } else {
                         self.messages.push(ChatMessage::Assistant(content));
+                        self.message_timestamps.push(None);
                     }
                 }
                 "tool_log" => {
@@ -54,6 +65,7 @@ impl App {
                         .unwrap_or("")
                         .to_string();
                     self.messages.push(ChatMessage::ToolLog(content));
+                    self.message_timestamps.push(None);
                 }
                 _ => {}
             }
@@ -79,19 +91,22 @@ impl App {
 
     pub(crate) fn push_user(&mut self, text: &str) {
         self.messages.push(ChatMessage::User(text.to_string()));
+        self.message_timestamps.push(Some(unix_timestamp_secs()));
     }
 
     pub(crate) fn push_assistant(&mut self, text: String) {
         self.messages.push(ChatMessage::Assistant(text));
+        self.message_timestamps.push(Some(unix_timestamp_secs()));
     }
 
     /// Append a streamed content chunk to the last Assistant message, or create one if none.
     pub(crate) fn append_assistant_chunk(&mut self, chunk: &str) {
         match self.messages.last_mut() {
             Some(ChatMessage::Assistant(s)) => s.push_str(chunk),
-            _ => self
-                .messages
-                .push(ChatMessage::Assistant(chunk.to_string())),
+            _ => {
+                self.messages.push(ChatMessage::Assistant(chunk.to_string()));
+                self.message_timestamps.push(Some(unix_timestamp_secs()));
+            }
         }
     }
 
@@ -103,6 +118,7 @@ impl App {
             .is_some_and(|m| matches!(m, ChatMessage::Assistant(s) if s.is_empty()))
         {
             self.messages.pop();
+            self.message_timestamps.pop();
         }
     }
 
@@ -112,20 +128,29 @@ impl App {
             *s = content;
         } else {
             self.messages.push(ChatMessage::Assistant(content));
+            self.message_timestamps.push(Some(unix_timestamp_secs()));
         }
     }
 
     pub(crate) fn push_tool_log(&mut self, line: String) {
         self.messages.push(ChatMessage::ToolLog(line));
+        self.message_timestamps.push(None);
     }
 
     pub(crate) fn set_thinking(&mut self, thinking: bool) {
         if thinking {
             self.messages.push(ChatMessage::Thinking);
+            self.message_timestamps.push(None);
         } else {
             // Remove Thinking by value (may not be last if we streamed ToolLog during thinking)
-            self.messages
-                .retain(|m| !matches!(m, ChatMessage::Thinking));
+            let (messages, timestamps): (Vec<_>, Vec<_>) = self
+                .messages
+                .drain(..)
+                .zip(self.message_timestamps.drain(..))
+                .filter(|(m, _)| !matches!(m, ChatMessage::Thinking))
+                .unzip();
+            self.messages = messages;
+            self.message_timestamps = timestamps;
         }
     }
 
@@ -140,6 +165,7 @@ impl App {
             _ => {
                 self.messages
                     .push(ChatMessage::Assistant("*[Request cancelled]*".to_string()));
+                self.message_timestamps.push(Some(unix_timestamp_secs()));
             }
         }
     }

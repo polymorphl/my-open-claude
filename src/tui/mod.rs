@@ -93,7 +93,12 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
     );
 
     let model_name = models::resolve_model_display_name(&config.model_id);
-    let mut app = App::new(config.model_id.clone(), model_name, workspace);
+    let mut app = App::new(
+        config.model_id.clone(),
+        model_name,
+        workspace,
+        config.show_timestamps,
+    );
     let mut api_messages: Option<Vec<Value>> = None;
     let mut pending_chat: Option<PendingChat> = None;
     let mut pending_model_fetch: Option<mpsc::Receiver<Result<Vec<models::ModelInfo>, String>>> =
