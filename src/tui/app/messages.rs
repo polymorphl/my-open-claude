@@ -50,12 +50,15 @@ impl App {
                             "[Unsupported message format]".to_string()
                         }
                     };
+                    let timestamp = msg
+                        .get("timestamp")
+                        .and_then(|t| t.as_u64());
                     if role == "user" {
                         self.messages.push(ChatMessage::User(content));
-                        self.message_timestamps.push(None);
+                        self.message_timestamps.push(timestamp);
                     } else {
                         self.messages.push(ChatMessage::Assistant(content));
-                        self.message_timestamps.push(None);
+                        self.message_timestamps.push(timestamp);
                     }
                 }
                 "tool_log" => {
@@ -73,18 +76,35 @@ impl App {
     }
 
     /// Serialize app messages to persistence format (user, assistant, tool_log).
-    /// Used when saving; preserves ToolLog for display when re-opening.
-    pub(crate) fn messages_to_persist_format(msgs: &[ChatMessage]) -> Vec<Value> {
+    /// Used when saving; preserves ToolLog and timestamps for display when re-opening.
+    pub(crate) fn messages_to_persist_format(
+        msgs: &[ChatMessage],
+        timestamps: &[Option<u64>],
+    ) -> Vec<Value> {
         msgs.iter()
-            .filter_map(|m| match m {
-                ChatMessage::User(s) => Some(serde_json::json!({"role": "user", "content": s})),
-                ChatMessage::Assistant(s) => {
-                    Some(serde_json::json!({"role": "assistant", "content": s}))
+            .enumerate()
+            .filter_map(|(i, m)| {
+                let ts = timestamps.get(i).and_then(|t| *t);
+                match m {
+                    ChatMessage::User(s) => {
+                        let mut v = serde_json::json!({"role": "user", "content": s});
+                        if let Some(t) = ts {
+                            v["timestamp"] = serde_json::json!(t);
+                        }
+                        Some(v)
+                    }
+                    ChatMessage::Assistant(s) => {
+                        let mut v = serde_json::json!({"role": "assistant", "content": s});
+                        if let Some(t) = ts {
+                            v["timestamp"] = serde_json::json!(t);
+                        }
+                        Some(v)
+                    }
+                    ChatMessage::ToolLog(s) => {
+                        Some(serde_json::json!({"role": "tool_log", "content": s}))
+                    }
+                    ChatMessage::Thinking => None,
                 }
-                ChatMessage::ToolLog(s) => {
-                    Some(serde_json::json!({"role": "tool_log", "content": s}))
-                }
-                ChatMessage::Thinking => None,
             })
             .collect()
     }

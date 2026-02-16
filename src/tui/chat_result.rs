@@ -24,7 +24,7 @@ pub(super) fn save_conversation_if_dirty(
     if !app.is_dirty() {
         return;
     }
-    let msgs = app::App::messages_to_persist_format(&app.messages);
+    let msgs = app::App::messages_to_persist_format(&app.messages, &app.message_timestamps);
     if msgs.is_empty() {
         return;
     }
@@ -64,7 +64,7 @@ pub(super) fn handle_chat_result(
             }
             app.replace_or_push_assistant(content);
             app.scroll = app::ScrollPosition::Bottom;
-            let to_save = app::App::messages_to_persist_format(&app.messages);
+            let to_save = app::App::messages_to_persist_format(&app.messages, &app.message_timestamps);
             let title = first_message_preview(&to_save, constants::TITLE_PREVIEW_MAX_LEN);
             match history::save_conversation(app.conversation_id(), &title, &to_save, config) {
                 Ok(id) => {

@@ -1,5 +1,6 @@
 //! Chat history: message list with blocks, separators, code blocks, and scrollbar.
 
+use chrono::{TimeZone, Timelike};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -110,13 +111,14 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
 
     let start = lines.len();
 
-    // Top border: "┌─ Label ───...──┐" or "┌─ Label 14:32 ───...──┐"
-    let time_suffix = p
+    // Top border: "┌─ Label ───...──┐" or "┌─ Label 14:32 ───...──┐" (local time)
+    let time_suffix: String = p
         .timestamp
-        .map(|unix_secs| {
-            let hour = (unix_secs % 86400) / 3600;
-            let min = (unix_secs % 3600) / 60;
-            format!(" {:02}:{:02}", hour, min)
+        .and_then(|unix_secs| {
+            chrono::Local
+                .timestamp_opt(unix_secs as i64, 0)
+                .single()
+                .map(|dt| format!(" {:02}:{:02}", dt.hour(), dt.minute()))
         })
         .unwrap_or_default();
     let top_label = if time_suffix.is_empty() {

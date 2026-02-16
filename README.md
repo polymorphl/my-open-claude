@@ -50,6 +50,7 @@ The app relies on environment variables. Use a `.env` file in the project root:
 | `OPENROUTER_MODEL` | No | Default model ID (used when no last model saved). Default: `anthropic/claude-haiku-4.5` |
 | `OPENROUTER_BASE_URL` | No | API base URL. Default: `https://openrouter.ai/api/v1` |
 | `MY_OPEN_CLAUDE_MAX_CONVERSATIONS` | No | Max number of conversations to keep; older ones are pruned. Default: 50. Set to 0 for no limit. |
+| `MY_OPEN_CLAUDE_SHOW_TIMESTAMPS` | No | Show timestamps (HH:MM) next to messages in the TUI. Default: enabled. Set to 0 or false to disable. |
 
 ### Configuration paths
 

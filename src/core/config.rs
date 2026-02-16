@@ -93,8 +93,8 @@ pub fn load() -> Result<Config, ConfigError> {
         .unwrap_or(DEFAULT_MAX_CONVERSATIONS);
 
     let show_timestamps = env::var("MY_OPEN_CLAUDE_SHOW_TIMESTAMPS")
-        .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+        .map(|s| s != "0" && !s.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
 
     // Create OpenAI/OpenRouter configuration
     let openai_config = OpenAIConfig::new()
