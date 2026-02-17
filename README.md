@@ -26,6 +26,16 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 
 ## Installation
 
+### Pre-built binaries
+
+Pre-built binaries are available on [Releases](https://github.com/polymorphl/my-open-claude/releases).
+
+1. Download the archive for your OS and architecture (Linux x64, macOS Intel/ARM, Windows x64)
+2. Extract and add the binary to your PATH (or run it directly)
+3. Configure `.env` (see [Configuration](#configuration) below)
+
+### Build from source
+
 ```sh
 git clone https://github.com/polymorphl/my-open-claude.git
 cd my-open-claude
@@ -116,6 +126,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 ## Development
 
 - Run tests: `cargo test`
+- [Releasing](docs/RELEASING.md) — version bumps and GitHub releases
 - Check formatting: `cargo fmt --check` (or `cargo fmt` to format)
 - Lint: `cargo clippy --all-targets -- -D warnings`
 - [Architecture & flows](docs/ARCHITECTURE.md) — diagrams and data flow
