@@ -13,6 +13,9 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # Create tag + release on merge of Release PR. Use RELEASE_PLEASE_TOKEN (PAT)
+      # instead of GITHUB_TOKEN so the tag push triggers release.yml (GITHUB_TOKEN
+      # does not trigger downstream workflows).
       - uses: googleapis/release-please-action@v4
         id: release
         with:
@@ -20,4 +23,3 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           target-branch: master
-          skip-github-release: true
