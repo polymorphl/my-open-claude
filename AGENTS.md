@@ -98,10 +98,23 @@ Every contribution must pass:
 - `cargo test`
 
 ## Development Workflow
-- Feature branches
-- Squash commits
-- Meaningful commit messages
+- Branch naming: `feature/*` or `fix/*` for work merged into `master`
+- Squash commits when merging PRs
+- Commit messages MUST follow [Conventional Commits](https://www.conventionalcommits.org/) (required for release-please)
 - Update documentation with code changes
+
+### Conventional Commits
+Use these prefixes for commit messages (especially squash-merge messages):
+- `feat:` — new feature (minor version bump)
+- `fix:` — bug fix (patch version bump)
+- `docs:`, `style:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`, `chore:` — no version bump
+- `feat!:`, `fix!:` — breaking change (major version bump)
+
+Example: `feat: add custom slash commands`
+
+## Releasing
+- [docs/RELEASING.md](docs/RELEASING.md) — version bumps, GitHub releases, pre-built binaries
+- release-please manages versions from Conventional Commits; merge Release PRs to publish
 
 ## Build Verification
 Always `cargo build` after modifications to verify compilation.
