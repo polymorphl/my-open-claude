@@ -43,13 +43,13 @@ fn truncate_with_ellipsis(s: &str, max_width: usize) -> String {
 pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
     let in_slash = app.input.starts_with('/');
     let filter = app.input.get(1..).unwrap_or("");
-    let filtered = commands::filter_commands(filter);
+    let filtered = commands::filter_commands_resolved(&app.resolved_commands, filter);
     let ac_height = if in_slash && !filtered.is_empty() {
         AUTOCOMPLETE_VISIBLE_LINES
     } else {
         0
     };
-    let has_error = app.credits_fetch_error.is_some();
+    let has_error = app.credits_fetch_error.is_some() || app.templates_load_error.is_some();
     let base = 1 + INPUT_LINES + 1 + 1;
     let error_height = if has_error { ERROR_LINES } else { 0u16 };
     let total_height = area.height;
@@ -125,7 +125,11 @@ pub(crate) fn draw_welcome_center(f: &mut Frame, app: &mut App, area: Rect) {
 
     welcome_mascot::draw_mascot(f, inner_chunks[0]);
 
-    if let (Some(area), Some(err)) = (error_area, app.credits_fetch_error.as_ref()) {
+    let err_msg = app
+        .credits_fetch_error
+        .as_ref()
+        .or(app.templates_load_error.as_ref());
+    if let (Some(area), Some(err)) = (error_area, err_msg) {
         let err_line = Line::from(Span::styled(
             truncate_with_ellipsis(err, area.width as usize),
             Style::default().fg(Color::Red),
@@ -277,7 +281,7 @@ fn draw_suggestions(f: &mut Frame, app: &mut App, area: Rect) {
 pub(crate) fn draw_input_section(f: &mut Frame, app: &mut App, input_section: Rect) {
     let in_slash = app.input.starts_with('/');
     let filter = app.input.get(1..).unwrap_or("");
-    let filtered = commands::filter_commands(filter);
+    let filtered = commands::filter_commands_resolved(&app.resolved_commands, filter);
     let ac_height = if in_slash && !filtered.is_empty() {
         AUTOCOMPLETE_VISIBLE_LINES
     } else {

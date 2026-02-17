@@ -6,8 +6,9 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::runtime::Runtime;
 
-use crate::core::commands::{self, SlashCommand};
+use crate::core::commands::{self, ResolvedCommand};
 use crate::core::config::Config;
+use crate::core::templates;
 use crate::core::workspace;
 
 use super::super::app::{App, ScrollPosition};
@@ -25,9 +26,9 @@ fn slash_filter(app: &App) -> &str {
 }
 
 /// Get filtered commands for current input. Returns empty when not in slash mode.
-fn filtered_commands(app: &App) -> Vec<&'static SlashCommand> {
+fn filtered_commands(app: &App) -> Vec<&ResolvedCommand> {
     if app.input.starts_with('/') {
-        commands::filter_commands(slash_filter(app))
+        commands::filter_commands_resolved(&app.resolved_commands, slash_filter(app))
     } else {
         vec![]
     }
@@ -77,28 +78,44 @@ pub(crate) fn handle_main_input(
             super::HandleResult::Continue
         }
 
-        // Slash autocomplete: Enter selects command and inserts template
+        // Slash autocomplete: Enter selects command (or opens meta-command popup)
         (KeyCode::Enter, _) if in_slash_mode && !commands.is_empty() && pending_chat.is_none() => {
-            let cmd = commands[app.selected_command_index];
+            let cmd = commands[app.selected_command_index].clone();
             let rest = app
                 .input
                 .get(cmd.full_name().len()..)
                 .unwrap_or("")
                 .trim()
                 .to_string();
-            app.input = if rest.is_empty() {
-                format!("{} ", cmd.prompt_prefix)
-            } else {
-                format!("{} {}", cmd.prompt_prefix, rest)
-            };
-            app.input_cursor = app.input.len();
-            app.pending_command_mode = Some(cmd.mode.to_string());
+            app.input.clear();
+            app.input_cursor = 0;
             app.selected_command_index = 0;
-            // Sync UI mode (Ask/Build buttons) with command's mode.
-            app.selected_suggestion = SUGGESTIONS
-                .iter()
-                .position(|s| *s == cmd.mode)
-                .unwrap_or(app.selected_suggestion);
+
+            match cmd.name.as_str() {
+                "create-command" => {
+                    app.open_create_command_popup();
+                }
+                "update-command" => {
+                    app.open_update_command_popup();
+                }
+                "delete-command" => {
+                    app.open_delete_command_popup();
+                }
+                _ => {
+                    let prefix = templates::expand_cwd(&cmd.prompt_prefix, &app.workspace.root);
+                    app.input = if rest.is_empty() {
+                        format!("{} ", prefix)
+                    } else {
+                        format!("{} {}", prefix, rest)
+                    };
+                    app.input_cursor = app.input.len();
+                    app.pending_command_mode = Some(cmd.mode.clone());
+                    app.selected_suggestion = SUGGESTIONS
+                        .iter()
+                        .position(|s| *s == cmd.mode)
+                        .unwrap_or(app.selected_suggestion);
+                }
+            }
             super::HandleResult::Continue
         }
 
@@ -254,7 +271,8 @@ pub(crate) fn handle_main_input(
             }
             // Clamp selected_command_index when filter shrinks (user typed more chars)
             if app.input.starts_with('/') {
-                let new_commands = commands::filter_commands(slash_filter(app));
+                let new_commands =
+                    commands::filter_commands_resolved(&app.resolved_commands, slash_filter(app));
                 if !new_commands.is_empty() && app.selected_command_index >= new_commands.len() {
                     app.selected_command_index = new_commands.len().saturating_sub(1);
                 }

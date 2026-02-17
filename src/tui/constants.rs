@@ -8,6 +8,9 @@ pub(super) const ACCENT: Color = Color::Rgb(152, 251, 152);
 /// Secondary accent — soft cyan (#7EC8E3) that pairs well with the green.
 pub(super) const ACCENT_SECONDARY: Color = Color::Rgb(126, 200, 227);
 
+/// Color for custom commands in slash autocomplete (orange, distinct from built-in cyan).
+pub(super) const CUSTOM_COMMAND_COLOR: Color = Color::Rgb(255, 179, 71);
+
 /// Actions below input: Ask (explanation), Build (writing / files, bash, etc.).
 pub(super) const SUGGESTIONS: &[&str] = &["Ask", "Build"];
 

@@ -18,6 +18,7 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 - **Model selector**: choose from tool-capable models (Alt+M), with persisted selection
 - **Persistent conversation history**: conversations saved to disk; load with Alt+H, new conversation with Ctrl+N
 - **Credit balance**: OpenRouter balance displayed in the header; click to open your account settings
+- **Custom slash commands**: create, update, and delete your own prompt shortcuts; saved in `templates.json`
 
 ## Prerequisites
 
@@ -66,7 +67,7 @@ The app relies on environment variables. Use a `.env` file in the project root:
 
 | Usage | Linux | macOS | Windows |
 |-------|-------|-------|---------|
-| Config (last selected model) | `~/.config/io/polymorphl/my-open-claude/` | `~/Library/Application Support/io.polymorphl.my-open-claude/` | `%APPDATA%\io\polymorphl\my-open-claude\` |
+| Config (model, templates.json) | `~/.config/io/polymorphl/my-open-claude/` | `~/Library/Application Support/io.polymorphl.my-open-claude/` | `%APPDATA%\io\polymorphl\my-open-claude\` |
 | Conversations | `~/.local/share/io/polymorphl/my-open-claude/conversations/` | `~/Library/Application Support/io.polymorphl.my-open-claude/conversations/` | `%APPDATA%\io\polymorphl\my-open-claude\conversations\` |
 | Cache (models list, 24h TTL) | `~/.cache/io/polymorphl/my-open-claude/models.json` | `~/Library/Caches/io.polymorphl.my-open-claude/models.json` | `%LOCALAPPDATA%\io\polymorphl\my-open-claude\Cache\models.json` |
 
@@ -122,6 +123,13 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 
 - **Ask mode**: read-only (Read, Grep, ListDir, Glob only); no file writes or shell commands.
 - **Build mode**: full tools (Read, Write, Edit, Bash, etc.).
+
+### Custom commands
+
+- **`/create-command`** : create a new slash command (name, description, prompt template, mode)
+- **`/update-command`** : modify an existing custom command
+- **`/delete-command`** : remove one or more custom commands (select with Space, confirm with Enter)
+- Custom commands are stored in `templates.json` in the config directory and persist across sessions
 
 ## Development
 

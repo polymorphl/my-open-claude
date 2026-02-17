@@ -141,7 +141,8 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
                 if trimmed.is_empty() {
                     continue;
                 }
-                for chunk in wrap_message(trimmed, p.content_width) {
+                let chunks: Vec<String> = wrap_message(trimmed, p.content_width);
+                for chunk in chunks {
                     let (prefix, chunk_style) = if chunk.is_empty() {
                         ("  ", Style::default())
                     } else if p.is_error {
@@ -179,7 +180,8 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
                     let normalized = normalize_code_operators(code_line);
                     let line_spans = highlight_code_line(lang, &normalized);
                     let mut offset = 0;
-                    for chunk in wrap_message(&normalized, code_inner_width) {
+                    let code_chunks: Vec<String> = wrap_message(&normalized, code_inner_width);
+                    for chunk in code_chunks {
                         let chunk_len = chunk.chars().count();
                         let spans_slice =
                             slice_spans_by_range(&line_spans, offset, offset + chunk_len);
