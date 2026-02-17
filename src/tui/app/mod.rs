@@ -203,13 +203,13 @@ impl App {
                     let custom_clone = custom.clone();
                     match crate::core::commands::resolve_commands(custom) {
                         Ok(resolved) => (resolved, custom_clone, None),
-                        Err(e) => (vec![], vec![], Some(e.to_string())),
+                        Err(e) => (vec![], vec![], Some(e.safe_mode_message())),
                     }
                 }
                 Err(e) => (
                     crate::core::commands::resolve_commands(vec![]).unwrap_or_default(),
                     vec![],
-                    Some(e.to_string()),
+                    Some(e.safe_mode_message()),
                 ),
             };
 

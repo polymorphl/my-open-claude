@@ -95,11 +95,15 @@ fn validate_rejects_name_with_spaces() {
         }],
     };
     let err = validate_and_convert(file, BUILTIN).unwrap_err();
-    assert!(err.to_string().contains("alphanumeric"));
+    assert!(
+        err.to_string().contains("letters") || err.to_string().contains("hyphens"),
+        "expected validation message about allowed chars, got: {}",
+        err
+    );
 }
 
 #[test]
-fn validate_rejects_name_with_hyphens() {
+fn validate_accepts_name_with_hyphens() {
     let file = TemplatesFile {
         templates: vec![TemplateEntry {
             name: "my-command".to_string(),
@@ -108,8 +112,24 @@ fn validate_rejects_name_with_hyphens() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
-    assert!(err.to_string().contains("alphanumeric"));
+    let out = validate_and_convert(file, BUILTIN).unwrap();
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].name, "my-command");
+}
+
+#[test]
+fn validate_accepts_name_with_underscores() {
+    let file = TemplatesFile {
+        templates: vec![TemplateEntry {
+            name: "my_command".to_string(),
+            description: "x".to_string(),
+            prompt_prefix: "y".to_string(),
+            mode: "Ask".to_string(),
+        }],
+    };
+    let out = validate_and_convert(file, BUILTIN).unwrap();
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].name, "my_command");
 }
 
 #[test]
@@ -123,7 +143,11 @@ fn validate_rejects_name_with_special_chars() {
         }],
     };
     let err = validate_and_convert(file, BUILTIN).unwrap_err();
-    assert!(err.to_string().contains("alphanumeric"));
+    assert!(
+        err.to_string().contains("letters") || err.to_string().contains("hyphens"),
+        "expected validation message about allowed chars, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -276,6 +300,26 @@ fn validate_accepts_multiple_valid_templates() {
     assert_eq!(out.len(), 2);
     assert_eq!(out[0].name, "alpha");
     assert_eq!(out[1].name, "beta");
+}
+
+#[test]
+fn safe_mode_message_formats_friendly_error() {
+    use super::TemplatesError;
+    let io_err = TemplatesError::Io(std::io::Error::from(std::io::ErrorKind::NotFound));
+    assert!(
+        io_err
+            .safe_mode_message()
+            .contains("built-in commands only")
+    );
+    assert!(io_err.safe_mode_message().contains("could not read file"));
+
+    let val_err = TemplatesError::Validation("duplicate name".to_string());
+    assert!(
+        val_err
+            .safe_mode_message()
+            .contains("built-in commands only")
+    );
+    assert!(val_err.safe_mode_message().contains("validation error"));
 }
 
 #[test]

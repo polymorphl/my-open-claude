@@ -12,8 +12,13 @@ fn validate_name(name: &str, exclude: Option<&str>, custom_names: &[String]) -> 
     if name.trim().is_empty() {
         return Some("Name cannot be empty".to_string());
     }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Some("Name must be alphanumeric only".to_string());
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Some(
+            "Name must contain only letters, numbers, hyphens, and underscores".to_string(),
+        );
     }
     let name_lower = name.to_lowercase();
     if BUILTIN_NAMES.contains(&name_lower.as_str()) {

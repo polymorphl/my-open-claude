@@ -29,16 +29,20 @@ pub(crate) fn validate_and_convert(
     let mut result = Vec::with_capacity(file.templates.len());
 
     for (i, entry) in file.templates.into_iter().enumerate() {
-        // name: alphanumeric only
+        // name: alphanumeric, hyphens, underscores
         if entry.name.is_empty() {
             return Err(TemplatesError::Validation(format!(
                 "Template at index {}: name cannot be empty",
                 i
             )));
         }
-        if !entry.name.chars().all(|c| c.is_ascii_alphanumeric()) {
+        if !entry
+            .name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(TemplatesError::Validation(format!(
-                "Template '{}': name must be alphanumeric only",
+                "Template '{}': name must contain only letters, numbers, hyphens, and underscores",
                 entry.name
             )));
         }

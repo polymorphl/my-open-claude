@@ -29,6 +29,18 @@ pub enum TemplatesError {
     Validation(String),
 }
 
+impl TemplatesError {
+    /// User-friendly message when falling back to built-in commands only (safe mode).
+    pub fn safe_mode_message(&self) -> String {
+        let detail = match self {
+            TemplatesError::Io(_) => "could not read file".to_string(),
+            TemplatesError::Json(_) => "invalid JSON".to_string(),
+            TemplatesError::Validation(msg) => format!("validation error: {}", msg),
+        };
+        format!("templates.json: {} — using built-in commands only", detail)
+    }
+}
+
 /// Load custom templates from `~/.config/my-open-claude/templates.json`.
 /// Returns empty vec if file is absent. Errors on invalid content.
 /// `builtin_names` must contain lowercase built-in command names for collision check.
