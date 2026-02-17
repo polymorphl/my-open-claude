@@ -59,9 +59,14 @@ pub(super) fn handle_delete_command_popup(
                 })
                 .collect();
             std::mem::swap(&mut app.custom_templates, &mut remaining);
-            if templates::save_templates(&app.custom_templates).is_ok() {
-                app.reload_resolved_commands();
-                app.templates_load_error = None;
+            match templates::save_templates(&app.custom_templates) {
+                Ok(()) => {
+                    app.reload_resolved_commands();
+                    app.templates_load_error = None;
+                }
+                Err(e) => {
+                    app.templates_load_error = Some(e.to_string());
+                }
             }
             app.delete_command_popup = None;
         }

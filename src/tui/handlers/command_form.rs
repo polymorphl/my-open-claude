@@ -80,9 +80,14 @@ fn save_command(app: &mut crate::tui::app::App, state: CommandFormState) {
         _ => return,
     }
 
-    if templates::save_templates(&app.custom_templates).is_ok() {
-        app.reload_resolved_commands();
-        app.templates_load_error = None;
+    match templates::save_templates(&app.custom_templates) {
+        Ok(()) => {
+            app.reload_resolved_commands();
+            app.templates_load_error = None;
+        }
+        Err(e) => {
+            app.templates_load_error = Some(e.to_string());
+        }
     }
 }
 
@@ -182,7 +187,9 @@ pub(super) fn handle_command_form_popup(
                     state.error = Some(e);
                     return HandleResult::Continue;
                 }
-                let state = app.command_form_popup.take().unwrap();
+                let Some(state) = app.command_form_popup.take() else {
+                    return HandleResult::Continue;
+                };
                 save_command(app, state);
             }
             KeyCode::Backspace => {

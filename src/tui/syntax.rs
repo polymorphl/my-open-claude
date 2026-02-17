@@ -104,11 +104,16 @@ pub(super) fn highlight_code_line(lang: &str, line: &str) -> Vec<Span<'static>> 
         }
     };
 
-    let theme = ts
+    let Some(theme) = ts
         .themes
         .get("base16-ocean.dark")
         .or_else(|| ts.themes.values().next())
-        .expect("at least one theme");
+    else {
+        return vec![Span::styled(
+            line.to_string(),
+            Style::default().fg(ACCENT_SECONDARY),
+        )];
+    };
 
     let mut h = HighlightLines::new(syntax, theme);
     let line_with_ending = if line.ends_with('\n') {
