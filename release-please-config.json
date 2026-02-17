@@ -2,7 +2,8 @@
   "packages": {
     ".": {
       "release-type": "rust",
-      "skip-changelog": true
+      "skip-changelog": true,
+      "include-component-in-tag": false
     }
   }
 }

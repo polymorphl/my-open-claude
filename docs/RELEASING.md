@@ -38,3 +38,8 @@ git push origin master
 ```
 
 Then merge the resulting Release PR when it appears.
+
+## Troubleshooting
+
+- **"Expected 1 releases, only found 0"**: The tag format must match. We use `include-component-in-tag: false` in `release-please-config.json` so tags are `v0.2.0` (not `my-open-claude-v0.2.0`), matching the `release.yml` trigger.
+- **No Release PR created**: release-please only creates a PR when it finds `feat:` or `fix:` commits since the last tag. Commits like "Merge pull request...", "Update README...", or "Refactor..." are ignored. Use Conventional Commits for merge messages (especially with squash-merge).
