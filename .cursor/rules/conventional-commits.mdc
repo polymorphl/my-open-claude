@@ -1,0 +1,31 @@
+---
+description: Conventional Commits format for all commit messages
+alwaysApply: true
+---
+
+# Conventional Commits
+
+All commit messages MUST follow [Conventional Commits](https://www.conventionalcommits.org/).
+
+## Format
+
+```
+<type>(<scope>)?: <description>
+```
+
+## Required types
+
+- `feat:` — new feature (minor bump)
+- `fix:` — bug fix (patch bump)
+- `chore:` — maintenance, tooling, config (e.g. release-please, workflows)
+- `docs:` — documentation only
+- `style:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:` — use when relevant
+- `feat!:` or `fix!:` — breaking change (major bump)
+
+## Examples
+
+- `chore: add release-please configuration and update documentation`
+- `feat: add custom slash commands`
+- `fix: resolve input scroll on resize`
+
+When generating commit messages, always start with a type prefix.
