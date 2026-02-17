@@ -2,9 +2,11 @@
 
 mod messages;
 
+use crate::core::commands::ResolvedCommand;
 use crate::core::history::ConversationMeta;
 use crate::core::llm::{ConfirmState, TokenUsage};
 use crate::core::models::ModelInfo;
+use crate::core::templates::CustomTemplate;
 use crate::core::workspace::Workspace;
 use ratatui::layout::Rect;
 use ratatui::widgets::ListState;
@@ -37,6 +39,50 @@ pub struct ModelSelectorState {
     pub filter: String,
     /// When the model fetch started; used for loading spinner animation.
     pub(crate) fetch_started_at: Option<Instant>,
+}
+
+/// Which field is focused in the command form.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CommandFormField {
+    Name,
+    Description,
+    Prompt,
+    Mode,
+}
+
+/// Phase of the command form popup.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CommandFormPhase {
+    SelectCommand,
+    EditForm,
+}
+
+/// State for create/update command popup.
+pub struct CommandFormState {
+    pub form_mode: CommandFormMode,
+    pub name: String,
+    pub description: String,
+    pub prompt_prefix: String,
+    pub llm_mode: String,
+    pub focused_field: CommandFormField,
+    pub error: Option<String>,
+    pub phase: CommandFormPhase,
+    pub selected_index: usize,
+}
+
+#[derive(Clone)]
+pub enum CommandFormMode {
+    Create,
+    Update {
+        /// Original name (for validation: exclude from conflict check).
+        original_name: Option<String>,
+    },
+}
+
+/// State for delete command popup.
+pub struct DeleteCommandState {
+    pub selected_index: usize,
+    pub selected: Vec<bool>,
 }
 
 /// State for the history selector popup (Alt+H).
@@ -130,6 +176,16 @@ pub struct App {
     pub(crate) context_length: u64,
     /// Workspace (root, project type, AGENT.md) detected at startup.
     pub workspace: Workspace,
+    /// Merged built-in + custom commands for slash autocomplete.
+    pub resolved_commands: Vec<ResolvedCommand>,
+    /// Custom templates (mutable for create/update/delete).
+    pub custom_templates: Vec<CustomTemplate>,
+    /// Error loading templates.json (shown as toast/welcome message).
+    pub templates_load_error: Option<String>,
+    /// Create/update command form popup.
+    pub command_form_popup: Option<CommandFormState>,
+    /// Delete command popup.
+    pub delete_command_popup: Option<DeleteCommandState>,
 }
 
 impl App {
@@ -140,6 +196,23 @@ impl App {
         show_timestamps: bool,
     ) -> Self {
         let context_length = crate::core::models::resolve_context_length(&model_id);
+
+        let (resolved_commands, custom_templates, templates_load_error) =
+            match crate::core::templates::load_templates(crate::core::commands::BUILTIN_NAMES) {
+                Ok(custom) => {
+                    let custom_clone = custom.clone();
+                    match crate::core::commands::resolve_commands(custom) {
+                        Ok(resolved) => (resolved, custom_clone, None),
+                        Err(e) => (vec![], vec![], Some(e.to_string())),
+                    }
+                }
+                Err(e) => (
+                    crate::core::commands::resolve_commands(vec![]).unwrap_or_default(),
+                    vec![],
+                    Some(e.to_string()),
+                ),
+            };
+
         Self {
             messages: vec![],
             input: String::new(),
@@ -174,7 +247,55 @@ impl App {
             token_usage: None,
             context_length,
             workspace,
+            resolved_commands,
+            custom_templates,
+            templates_load_error,
+            command_form_popup: None,
+            delete_command_popup: None,
         }
+    }
+
+    pub(crate) fn open_create_command_popup(&mut self) {
+        self.command_form_popup = Some(CommandFormState {
+            form_mode: CommandFormMode::Create,
+            name: String::new(),
+            description: String::new(),
+            prompt_prefix: String::new(),
+            llm_mode: "Build".to_string(),
+            focused_field: CommandFormField::Name,
+            error: None,
+            phase: CommandFormPhase::EditForm,
+            selected_index: 0,
+        });
+    }
+
+    pub(crate) fn open_update_command_popup(&mut self) {
+        if self.custom_templates.is_empty() {
+            return;
+        }
+        self.command_form_popup = Some(CommandFormState {
+            form_mode: CommandFormMode::Update {
+                original_name: None,
+            },
+            name: String::new(),
+            description: String::new(),
+            prompt_prefix: String::new(),
+            llm_mode: "Build".to_string(),
+            focused_field: CommandFormField::Name,
+            error: None,
+            phase: CommandFormPhase::SelectCommand,
+            selected_index: 0,
+        });
+    }
+
+    pub(crate) fn open_delete_command_popup(&mut self) {
+        if self.custom_templates.is_empty() {
+            return;
+        }
+        self.delete_command_popup = Some(DeleteCommandState {
+            selected_index: 0,
+            selected: vec![false; self.custom_templates.len()],
+        });
     }
 
     pub(crate) fn is_dirty(&self) -> bool {
@@ -238,6 +359,14 @@ impl App {
         match self.scroll {
             ScrollPosition::Line(n) => n.min(self.last_max_scroll),
             ScrollPosition::Bottom => self.last_max_scroll,
+        }
+    }
+
+    /// Recompute resolved_commands from custom_templates (after create/update/delete).
+    pub(crate) fn reload_resolved_commands(&mut self) {
+        if let Ok(resolved) = crate::core::commands::resolve_commands(self.custom_templates.clone())
+        {
+            self.resolved_commands = resolved;
         }
     }
 }

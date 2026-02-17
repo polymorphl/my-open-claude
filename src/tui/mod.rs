@@ -199,7 +199,9 @@ pub fn run(config: Arc<Config>, workspace: Workspace) -> io::Result<()> {
                     // Insert pasted text at cursor when input has focus (no popup open).
                     let input_focus = app.confirm_popup.is_none()
                         && app.model_selector.is_none()
-                        && app.history_selector.is_none();
+                        && app.history_selector.is_none()
+                        && app.command_form_popup.is_none()
+                        && app.delete_command_popup.is_none();
                     if input_focus {
                         let cursor = app.input_cursor.min(app.input.len());
                         let cursor_byte = app.input.floor_char_boundary(cursor);

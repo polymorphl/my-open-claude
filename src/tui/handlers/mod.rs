@@ -1,7 +1,9 @@
 //! Event handlers for the TUI: keyboard and mouse.
 
 mod chat_spawn;
+mod command_form;
 mod confirm;
+mod delete_command;
 mod history_selector;
 mod input;
 mod model_selector;
@@ -68,6 +70,8 @@ pub(crate) fn would_esc_start_meta_sequence(
         && app.confirm_popup.is_none()
         && app.model_selector.is_none()
         && app.history_selector.is_none()
+        && app.command_form_popup.is_none()
+        && app.delete_command_popup.is_none()
         && !app.input.starts_with('/')
         && pending_chat.is_none()
 }
@@ -100,7 +104,11 @@ pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> Handl
         .is_some_and(|rect| rect.contains(pos));
     let over_message = hit_test_message(app, pos);
 
-    if app.confirm_popup.is_none() && app.model_selector.is_none() && app.history_selector.is_none()
+    if app.confirm_popup.is_none()
+        && app.model_selector.is_none()
+        && app.history_selector.is_none()
+        && app.command_form_popup.is_none()
+        && app.delete_command_popup.is_none()
     {
         match mouse.kind {
             MouseEventKind::Moved => {
@@ -208,6 +216,8 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
         && app.confirm_popup.is_none()
         && app.model_selector.is_none()
         && app.history_selector.is_none()
+        && app.command_form_popup.is_none()
+        && app.delete_command_popup.is_none()
     {
         if app.input.starts_with('/') {
             app.input.clear();
@@ -248,6 +258,16 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
     // Model selector popup
     if app.model_selector.is_some() {
         return popups::handle_model_selector(key.code, key.modifiers, app, pending_model_fetch);
+    }
+
+    // Command form popup (create/update)
+    if app.command_form_popup.is_some() {
+        return command_form::handle_command_form_popup(key.code, key.modifiers, app);
+    }
+
+    // Delete command popup
+    if app.delete_command_popup.is_some() {
+        return delete_command::handle_delete_command_popup(key.code, key.modifiers, app);
     }
 
     // Main input handling

@@ -2277,6 +2277,7 @@ dependencies = [
  "syntect",
  "tempfile",
  "textwrap",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-util",
  "uuid",

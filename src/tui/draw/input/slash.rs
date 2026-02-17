@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use crate::core::commands;
 
 use super::super::super::app::App;
-use super::super::super::constants::{ACCENT, ACCENT_SECONDARY};
+use super::super::super::constants::{ACCENT, ACCENT_SECONDARY, CUSTOM_COMMAND_COLOR};
 
 /// Draw the slash command autocomplete list above the given area.
 /// List is scrollable when there are more commands than the visible viewport.
@@ -18,7 +18,7 @@ pub(super) fn draw(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let filter = app.input.get(1..).unwrap_or("");
-    let filtered = commands::filter_commands(filter);
+    let filtered = commands::filter_commands_resolved(&app.resolved_commands, filter);
     if filtered.is_empty() {
         return;
     }
@@ -39,14 +39,24 @@ pub(super) fn draw(f: &mut Frame, app: &App, area: Rect) {
             let selected = idx == app.selected_command_index;
             let name = cmd.full_name();
             let desc = format!("  {}", cmd.description);
+            let name_color = if cmd.is_custom {
+                CUSTOM_COMMAND_COLOR
+            } else {
+                ACCENT_SECONDARY
+            };
+            let sel_bg = if cmd.is_custom {
+                CUSTOM_COMMAND_COLOR
+            } else {
+                ACCENT
+            };
             if selected {
                 Line::from(vec![
-                    Span::styled(name, Style::default().fg(Color::Black).bg(ACCENT)),
-                    Span::styled(desc, Style::default().fg(Color::Black).bg(ACCENT)),
+                    Span::styled(name, Style::default().fg(Color::Black).bg(sel_bg)),
+                    Span::styled(desc, Style::default().fg(Color::Black).bg(sel_bg)),
                 ])
             } else {
                 Line::from(vec![
-                    Span::styled(name, Style::default().fg(ACCENT_SECONDARY)),
+                    Span::styled(name, Style::default().fg(name_color)),
                     Span::styled(desc, Style::default().fg(Color::DarkGray)),
                 ])
             }

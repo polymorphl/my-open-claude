@@ -8,6 +8,7 @@ pub mod message;
 pub mod models;
 pub mod paths;
 pub mod persistence;
+pub mod templates;
 pub mod tools;
 pub mod util;
 pub mod workspace;

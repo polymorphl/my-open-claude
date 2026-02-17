@@ -1,5 +1,7 @@
 //! TUI rendering: layout and widgets for the chat interface.
 
+mod command_form_popup;
+mod delete_command_popup;
 mod header;
 mod history;
 mod history_selector_popup;
@@ -44,7 +46,11 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         input::draw_bottom_bar(f, app, chunks[4]);
     } else {
         let input_section_height = if app.input.starts_with('/')
-            && !commands::filter_commands(app.input.get(1..).unwrap_or("")).is_empty()
+            && !commands::filter_commands_resolved(
+                &app.resolved_commands,
+                app.input.get(1..).unwrap_or(""),
+            )
+            .is_empty()
         {
             input::AUTOCOMPLETE_VISIBLE_LINES + super::constants::INPUT_LINES + 3
         } else {
@@ -71,6 +77,12 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
     if let Some(ref mut selector) = app.history_selector {
         history_selector_popup::draw_history_selector_popup(f, area, selector);
+    }
+    if let Some(ref mut state) = app.command_form_popup {
+        command_form_popup::draw_command_form_popup(f, area, state, &app.custom_templates);
+    }
+    if let Some(ref mut state) = app.delete_command_popup {
+        delete_command_popup::draw_delete_command_popup(f, area, state, &app.custom_templates);
     }
 
     // Toast: top right, below header (y=2). Opaque background so it's visible over history.

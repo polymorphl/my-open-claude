@@ -13,6 +13,17 @@ use super::constants;
 
 const SAVE_ERROR_TOAST_DURATION: Duration = Duration::from_secs(4);
 
+/// When the assistant returns empty content after tool execution, use the last tool result.
+fn last_tool_result(messages: &[Value]) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("tool"))
+        .and_then(|m| m.get("content").and_then(|c| c.as_str()))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Save the current conversation if it has unsaved changes.
 /// Logs and surfaces save errors via a toast.
 /// Persists app.messages (including ToolLog) so tool logs are visible when re-opening.
@@ -62,7 +73,12 @@ pub(super) fn handle_chat_result(
                     app.push_tool_log(line);
                 }
             }
-            app.replace_or_push_assistant(content);
+            let display_content = if content.trim().is_empty() {
+                last_tool_result(&messages).unwrap_or(content)
+            } else {
+                content
+            };
+            app.replace_or_push_assistant(display_content);
             app.scroll = app::ScrollPosition::Bottom;
             let to_save =
                 app::App::messages_to_persist_format(&app.messages, &app.message_timestamps);
