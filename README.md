@@ -43,6 +43,30 @@ cd my-open-claude
 cargo build --release
 ```
 
+### Install to system (from source)
+
+From the project directory, install the binary to `~/.cargo/bin`:
+
+```sh
+cargo run -- install
+# or, if already built:
+./target/release/my-open-claude install
+```
+
+### Update to latest release
+
+If you have a pre-built binary or installed from source, update to the latest release:
+
+```sh
+my-open-claude update
+```
+
+Check if an update is available without downloading:
+
+```sh
+my-open-claude update --check
+```
+
 ## Configuration
 
 The app relies on environment variables. Use a `.env` file in the project root:
