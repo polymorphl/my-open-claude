@@ -47,7 +47,10 @@ pub struct Args {
     pub ask: bool,
 
     /// Disable streaming in prompt mode (wait for full response before printing)
-    #[arg(long, help = "In prompt mode, wait for the full response instead of streaming")]
+    #[arg(
+        long,
+        help = "In prompt mode, wait for the full response instead of streaming"
+    )]
     pub no_stream: bool,
 
     /// Increase log verbosity (use multiple times for debug)
