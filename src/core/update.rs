@@ -5,9 +5,9 @@
 
 use self_update::Status;
 
+use crate::core::app;
+
 const REPO_OWNER: &str = "polymorphl";
-const REPO_NAME: &str = "my-open-claude";
-const BIN_NAME: &str = "my-open-claude";
 
 fn format_update_error(err: &(dyn std::error::Error + 'static)) -> String {
     let msg = err.to_string().to_lowercase();
@@ -23,7 +23,8 @@ fn format_update_error(err: &(dyn std::error::Error + 'static)) -> String {
         format!(
             "No pre-built binary for your platform. Build from source: \
              https://github.com/{}/{}/releases",
-            REPO_OWNER, REPO_NAME
+            REPO_OWNER,
+            app::NAME
         )
     } else {
         format!("Update failed: {}", err)
@@ -39,9 +40,9 @@ fn format_update_error(err: &(dyn std::error::Error + 'static)) -> String {
 pub fn run_update_check() -> Result<(), Box<dyn std::error::Error>> {
     let updater = self_update::backends::github::Update::configure()
         .repo_owner(REPO_OWNER)
-        .repo_name(REPO_NAME)
-        .bin_name(BIN_NAME)
-        .current_version(env!("CARGO_PKG_VERSION"))
+        .repo_name(app::NAME)
+        .bin_name(app::NAME)
+        .current_version(app::VERSION)
         .no_confirm(true)
         .show_download_progress(true)
         .build()?;
@@ -66,9 +67,9 @@ pub fn run_update_check() -> Result<(), Box<dyn std::error::Error>> {
 pub fn run_update() -> Result<(), Box<dyn std::error::Error>> {
     let updater = self_update::backends::github::Update::configure()
         .repo_owner(REPO_OWNER)
-        .repo_name(REPO_NAME)
-        .bin_name(BIN_NAME)
-        .current_version(env!("CARGO_PKG_VERSION"))
+        .repo_name(app::NAME)
+        .bin_name(app::NAME)
+        .current_version(app::VERSION)
         .no_confirm(true)
         .show_download_progress(true)
         .build()?;

@@ -5,6 +5,8 @@
 use std::env;
 use std::env::consts::EXE_SUFFIX;
 
+use crate::core::app;
+
 /// Install the binary to the user's cargo bin directory.
 ///
 /// Requires Cargo.toml in the current directory. Spawns `cargo install --path .`.
@@ -35,7 +37,7 @@ pub fn run_install() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or_default();
         format!("{}/.cargo", home)
     });
-    let install_path = format!("{}/bin/my-open-claude{}", cargo_home, EXE_SUFFIX);
+    let install_path = format!("{}/bin/{}{}", cargo_home, app::NAME, EXE_SUFFIX);
     println!("Installed to {}", install_path);
     Ok(())
 }

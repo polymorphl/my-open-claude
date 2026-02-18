@@ -2,9 +2,11 @@
 
 use std::path::PathBuf;
 
+use crate::core::app;
+
 /// Project directories (config, cache, data) from the standard platform locations.
 pub fn project_dirs() -> Option<directories::ProjectDirs> {
-    directories::ProjectDirs::from("io", "polymorphl", "my-open-claude")
+    directories::ProjectDirs::from("io", "polymorphl", app::NAME)
 }
 
 /// Override data dir for tests via env var. Set `TEST_DATA_DIR` before history operations.
