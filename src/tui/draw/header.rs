@@ -23,10 +23,11 @@ const CREDITS_HEADER_WIDTH: u16 = 12;
 
 /// Title text for header (used for centering). Append " *" when dirty.
 pub(crate) fn title_text(app: &App) -> String {
+    let version = env!("CARGO_PKG_VERSION");
     if app.is_dirty() {
-        "my-open-claude * ".to_string()
+        format!("my-open-claude v{} * ", version)
     } else {
-        "my-open-claude ".to_string()
+        format!("my-open-claude v{} ", version)
     }
 }
 
