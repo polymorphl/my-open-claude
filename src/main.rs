@@ -93,8 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"));
     if args.prompt.is_none() {
         // TUI mode: logs to file; stderr would corrupt the alternate screen
-        let log_path =
-            core::paths::cache_dir().map(|d| d.join(format!("{}.log", core::app::NAME)));
+        let log_path = core::paths::cache_dir().map(|d| d.join(format!("{}.log", core::app::NAME)));
         if let Some(path) = log_path
             && let Ok(file) = std::fs::OpenOptions::new()
                 .create(true)

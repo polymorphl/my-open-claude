@@ -7,8 +7,6 @@ use self_update::Status;
 
 use crate::core::app;
 
-const REPO_OWNER: &str = "polymorphl";
-
 fn format_update_error(err: &(dyn std::error::Error + 'static)) -> String {
     let msg = err.to_string().to_lowercase();
     if msg.contains("network")
@@ -23,7 +21,7 @@ fn format_update_error(err: &(dyn std::error::Error + 'static)) -> String {
         format!(
             "No pre-built binary for your platform. Build from source: \
              https://github.com/{}/{}/releases",
-            REPO_OWNER,
+            app::VENDOR,
             app::NAME
         )
     } else {
@@ -39,7 +37,7 @@ fn format_update_error(err: &(dyn std::error::Error + 'static)) -> String {
 /// Returns an error if the release check fails (network, API, etc.).
 pub fn run_update_check() -> Result<(), Box<dyn std::error::Error>> {
     let updater = self_update::backends::github::Update::configure()
-        .repo_owner(REPO_OWNER)
+        .repo_owner(app::VENDOR)
         .repo_name(app::NAME)
         .bin_name(app::NAME)
         .current_version(app::VERSION)
@@ -66,7 +64,7 @@ pub fn run_update_check() -> Result<(), Box<dyn std::error::Error>> {
 /// Returns an error if the update check, download, or replacement fails.
 pub fn run_update() -> Result<(), Box<dyn std::error::Error>> {
     let updater = self_update::backends::github::Update::configure()
-        .repo_owner(REPO_OWNER)
+        .repo_owner(app::VENDOR)
         .repo_name(app::NAME)
         .bin_name(app::NAME)
         .current_version(app::VERSION)
