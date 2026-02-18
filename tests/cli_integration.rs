@@ -69,3 +69,43 @@ fn cli_prompt_without_api_key_exits_with_error() {
         stderr
     );
 }
+
+#[test]
+fn cli_config_outputs_paths_and_status() {
+    let tmp = tempfile::TempDir::new().expect("temp dir");
+    let output = bin()
+        .arg("config")
+        .current_dir(tmp.path())
+        .output()
+        .expect("binary not found - run cargo build first");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Config:"), "expected Config: in output");
+    assert!(stdout.contains("API key:"), "expected API key: in output");
+}
+
+#[test]
+fn cli_completions_bash_produces_script() {
+    let output = bin()
+        .arg("completions")
+        .arg("bash")
+        .output()
+        .expect("binary not found - run cargo build first");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("_my-open-claude") || stdout.contains(APP_NAME),
+        "expected completion script for {}",
+        APP_NAME
+    );
+}
