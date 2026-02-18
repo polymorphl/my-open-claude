@@ -1,8 +1,11 @@
 //! Integration tests that run the CLI binary.
 
+/// App name from Cargo.toml (matches core::app::NAME used by the binary).
+const APP_NAME: &str = env!("CARGO_PKG_NAME");
+
 fn bin() -> std::process::Command {
-    // CARGO_BIN_EXE_<name> uses the binary target name; hyphens require concat! for env!()
-    let bin = env!(concat!("CARGO_BIN_EXE_my", "-", "open", "-", "claude"));
+    // CARGO_BIN_EXE_<name> is set by Cargo for each binary target.
+    let bin = env!(concat!("CARGO_BIN_EXE_", env!("CARGO_PKG_NAME")));
     let mut cmd = std::process::Command::new(bin);
     cmd.env_remove("OPENROUTER_API_KEY");
     cmd
@@ -23,7 +26,7 @@ fn cli_help_succeeds_and_outputs_usage() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(!stdout.is_empty());
     assert!(
-        stdout.contains("my-open-claude") || stdout.contains("prompt"),
+        stdout.contains(APP_NAME) || stdout.contains("prompt"),
         "expected usage text in output"
     );
 }
@@ -41,7 +44,7 @@ fn cli_version_succeeds() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("my-open-claude"));
+    assert!(stdout.contains(APP_NAME));
 }
 
 #[test]

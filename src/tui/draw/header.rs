@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use std::time::Instant;
 
+use crate::core::app;
 use crate::core::history;
 
 use super::super::app::App;
@@ -24,9 +25,9 @@ const CREDITS_HEADER_WIDTH: u16 = 12;
 /// Title text for header (used for centering). Append " *" when dirty.
 pub(crate) fn title_text(app: &App) -> String {
     if app.is_dirty() {
-        "my-open-claude * ".to_string()
+        format!("{} v{} * ", app::NAME, app::VERSION)
     } else {
-        "my-open-claude ".to_string()
+        format!("{} v{} ", app::NAME, app::VERSION)
     }
 }
 

@@ -12,14 +12,15 @@
 mod core;
 mod tui;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 
 /// Command-line arguments for the application
 ///
-/// Supports two primary modes:
-/// 1. Single prompt mode (with `-p`)
-/// 2. Interactive TUI mode (default)
+/// Supports:
+/// - Subcommands: `install`, `update`
+/// - Single prompt mode (with `-p`)
+/// - Interactive TUI mode (default)
 #[derive(Parser)]
 #[command(
     author,
@@ -27,6 +28,9 @@ use dotenv::dotenv;
     about = "An AI Assistant CLI powered by open-source models"
 )]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Send a single prompt then exit (without opening the TUI)
     #[arg(
         short = 'p',
@@ -34,6 +38,18 @@ struct Args {
         help = "Provide a prompt to get an immediate AI response"
     )]
     prompt: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Install the binary to ~/.cargo/bin (run from project directory)
+    Install,
+    /// Update to the latest release from GitHub
+    Update {
+        /// Only check if an update is available, don't download
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 /// Main application entry point
@@ -54,12 +70,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command-line arguments (before logger init to choose log target)
     let args = Args::parse();
 
+    // Handle install/update subcommands early (no config or logger needed)
+    if let Some(cmd) = args.command {
+        match cmd {
+            Commands::Install => {
+                core::install::run_install()?;
+                return Ok(());
+            }
+            Commands::Update { check } => {
+                if check {
+                    core::update::run_update_check()?;
+                } else {
+                    core::update::run_update()?;
+                }
+                return Ok(());
+            }
+        }
+    }
+
     // Initialize logging. In TUI mode, write to file to avoid corrupting the display.
     let mut logger =
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"));
     if args.prompt.is_none() {
         // TUI mode: logs to file; stderr would corrupt the alternate screen
-        let log_path = core::paths::cache_dir().map(|d| d.join("my-open-claude.log"));
+        let log_path = core::paths::cache_dir().map(|d| d.join(format!("{}.log", core::app::NAME)));
         if let Some(path) = log_path
             && let Ok(file) = std::fs::OpenOptions::new()
                 .create(true)
