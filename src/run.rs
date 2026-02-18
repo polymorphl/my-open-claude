@@ -1,6 +1,6 @@
 //! Application run modes: logger init, single prompt, TUI launch.
 
-use std::io;
+use std::io::{self, Write};
 use std::sync::Arc;
 
 use crate::cli::Args;
@@ -49,6 +49,23 @@ pub async fn run_single_prompt(
     let model = args.model.as_deref().unwrap_or(&config.model_id);
     let mode = if args.ask { "Ask" } else { "Build" };
     let context_length = core::models::resolve_context_length(model);
+
+    let options = if args.no_stream {
+        core::llm::ChatOptions::default()
+    } else {
+        core::llm::ChatOptions {
+            on_progress: Some(Box::new(|s| {
+                let _ = writeln!(io::stderr(), "{}", s);
+                let _ = io::stderr().flush();
+            })),
+            on_content_chunk: Some(Box::new(|s| {
+                let _ = io::stdout().write_all(s.as_bytes());
+                let _ = io::stdout().flush();
+            })),
+            ..Default::default()
+        }
+    };
+
     let result = core::llm::chat(core::llm::ChatRequest {
         config,
         model,
@@ -57,13 +74,16 @@ pub async fn run_single_prompt(
         context_length,
         confirm_destructive: Some(core::confirm::default_confirm()),
         previous_messages: None,
-        options: core::llm::ChatOptions::default(),
+        options,
         workspace,
     })
     .await?;
 
     if let core::llm::ChatResult::Complete { content, .. } = result {
-        println!("{}", content);
+        // In streaming mode, content was already printed via on_content_chunk
+        if args.no_stream {
+            println!("{}", content);
+        }
     }
     Ok(())
 }

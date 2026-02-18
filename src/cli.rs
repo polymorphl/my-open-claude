@@ -8,7 +8,7 @@ pub use clap_complete::generate;
 const AFTER_HELP: &str = "\
 EXAMPLES:
   my-open-claude                    Launch interactive TUI
-  my-open-claude -p \"explain X\"     Single prompt, print response
+  my-open-claude -p \"explain X\"     Single prompt, stream response to stdout
   my-open-claude -p -               Read prompt from stdin
   my-open-claude install            Install to ~/.cargo/bin
   my-open-claude update --check     Check for updates without downloading
@@ -45,6 +45,10 @@ pub struct Args {
     /// Use read-only tools (Ask mode) for single prompt
     #[arg(long, help = "Restrict to read-only tools in prompt mode")]
     pub ask: bool,
+
+    /// Disable streaming in prompt mode (wait for full response before printing)
+    #[arg(long, help = "In prompt mode, wait for the full response instead of streaming")]
+    pub no_stream: bool,
 
     /// Increase log verbosity (use multiple times for debug)
     #[arg(short = 'v', long = "verbose", action = ArgAction::Count, global = true)]
