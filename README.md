@@ -86,6 +86,9 @@ The app relies on environment variables. Use a `.env` file in the project root:
 | `OPENROUTER_BASE_URL` | No | API base URL. Default: `https://openrouter.ai/api/v1` |
 | `MY_OPEN_CLAUDE_MAX_CONVERSATIONS` | No | Max number of conversations to keep; older ones are pruned. Default: 50. Set to 0 for no limit. |
 | `MY_OPEN_CLAUDE_SHOW_TIMESTAMPS` | No | Show timestamps (HH:MM) next to messages in the TUI. Default: enabled. Set to 0 or false to disable. |
+| `MY_OPEN_CLAUDE_GIT_CONTEXT` | No | Inject Git context (branch, status) into the system prompt when in a repo. Use `1` or `true` (default) to enable; `0` or `false` to disable. |
+| `MY_OPEN_CLAUDE_GIT_STATUS_MAX_LINES` | No | Max lines of `git status` output to include. Default: 50. |
+| `MY_OPEN_CLAUDE_GIT_STATUS_MAX_BYTES` | No | Max bytes of `git status` output to include. Default: 2048. |
 
 ### Configuration paths
 
