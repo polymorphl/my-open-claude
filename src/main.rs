@@ -127,6 +127,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             previous_messages: None,
             options: core::llm::ChatOptions::default(),
             workspace: &workspace,
+            tools_list: core::tools::all(),
+            tools_defs: core::tools::definitions(),
         })
         .await?;
 

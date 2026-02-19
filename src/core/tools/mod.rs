@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 use serde_json::{Value, json};
 
-pub use bash::{BashTool, is_destructive};
+pub use bash::BashTool;
 pub use edit::EditTool;
 pub use glob_tool::GlobTool;
 pub use grep::GrepTool;
@@ -56,6 +56,11 @@ pub fn tool_definition(name: &str, description: &str, parameters: Value) -> Valu
 /// Error type for tool execution (Send + Sync for use across async/thread boundaries).
 pub type ToolError = Box<dyn std::error::Error + Send + Sync>;
 
+/// Max output size for Read and Bash tool results (32 KB).
+pub const MAX_OUTPUT_LARGE: usize = 32 * 1024;
+/// Max output size for Grep, ListDir, Glob tool results (16 KB).
+pub const MAX_OUTPUT_SMALL: usize = 16 * 1024;
+
 /// Trait for LLM tools. Each tool provides its API definition and executes with typed arguments.
 pub trait Tool: Send + Sync {
     /// Unique tool name (e.g. "Read", "Bash") used in API calls.
@@ -66,6 +71,28 @@ pub trait Tool: Send + Sync {
     fn args_preview(&self, args: &Value) -> String;
     /// Execute the tool with the given arguments. Returns output string or error.
     fn execute(&self, args: &Value) -> Result<String, ToolError>;
+
+    /// Optional: max output size in bytes. Default: None (unlimited).
+    fn output_limit(&self) -> Option<usize> {
+        None
+    }
+
+    /// Optional: disabled in Ask mode (read-only)? Default: false.
+    fn disabled_in_ask_mode(&self) -> bool {
+        false
+    }
+
+    /// Optional: may require user confirmation (e.g. destructive Bash command). Default: false.
+    fn may_need_confirmation(&self, args: &Value) -> bool {
+        let _ = args;
+        false
+    }
+
+    /// Optional: is this path an init file (AGENT.md/AGENTS.md) that should be written only once per session? Default: false.
+    fn is_init_file_target(&self, file_path: &str) -> bool {
+        let _ = file_path;
+        false
+    }
 }
 
 static CACHED_TOOLS: OnceLock<Vec<Box<dyn Tool>>> = OnceLock::new();
