@@ -64,7 +64,7 @@ Respond with a brief summary.",
     SlashCommand {
         name: "review",
         description: "Review Git changes (commit|branch|pr, defaults to uncommitted)",
-        prompt_prefix: "Review Git changes in the current workspace. By default review uncommitted changes: use Bash to run `git status` and `git diff` to get the changes. If a scope is specified (commit hash, branch name, or PR), review those changes instead. Point out bugs, style issues, and improvements in the changed code. Do not modify files—analysis only.",
+        prompt_prefix: "Review Git changes in the current workspace. When Git context (branch, status) is present in your system prompt, use Bash to run `git diff` and `git diff --staged` to get the code changes. If no Git context is present (e.g. not a repo), run `git status` and `git diff` instead—or inform the user that a Git repo is required. If a scope is specified (commit hash, branch name, or PR), run `git diff <scope>`. Point out bugs, style issues, and improvements. Do not modify files—analysis only.",
         mode: "Build",
     },
     SlashCommand {
@@ -94,7 +94,7 @@ Respond with a brief summary.",
     SlashCommand {
         name: "commit",
         description: "Write commit message",
-        prompt_prefix: "Write a conventional commit message: type(scope): description. Use Bash to run `git status` and `git diff` if changes not specified.",
+        prompt_prefix: "Write a conventional commit message: type(scope): description. When Git context (branch, status) is present in your system prompt, run `git diff` and `git diff --staged` for the actual changes. If no Git context is present, run `git status` and `git diff` instead—or inform the user that a Git repo is required.",
         mode: "Ask",
     },
     SlashCommand {
