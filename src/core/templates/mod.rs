@@ -43,8 +43,10 @@ impl TemplatesError {
 
 /// Load custom templates from `~/.config/my-open-claude/templates.json`.
 /// Returns empty vec if file is absent. Errors on invalid content.
-/// `builtin_names` must contain lowercase built-in command names for collision check.
-pub fn load_templates(builtin_names: &[&str]) -> Result<Vec<CustomTemplate>, TemplatesError> {
+/// `builtin_names` provides built-in command names for collision check (case-insensitive).
+pub fn load_templates(
+    builtin_names: impl IntoIterator<Item = impl AsRef<str>>,
+) -> Result<Vec<CustomTemplate>, TemplatesError> {
     let path = match paths::config_dir() {
         Some(dir) => dir.join("templates.json"),
         None => return Ok(vec![]),
@@ -56,7 +58,11 @@ pub fn load_templates(builtin_names: &[&str]) -> Result<Vec<CustomTemplate>, Tem
 
     let content = fs::read_to_string(&path)?;
     let file: validation::TemplatesFile = serde_json::from_str(&content)?;
-    validation::validate_and_convert(file, builtin_names)
+    let builtin_set: std::collections::HashSet<String> = builtin_names
+        .into_iter()
+        .map(|s| s.as_ref().to_lowercase())
+        .collect();
+    validation::validate_and_convert(file, &builtin_set)
 }
 
 /// Save custom templates to `~/.config/my-open-claude/templates.json`.

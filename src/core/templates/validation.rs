@@ -23,7 +23,7 @@ pub(crate) struct TemplateEntry {
 /// Validate file entries and convert to CustomTemplate list.
 pub(crate) fn validate_and_convert(
     file: TemplatesFile,
-    builtin_names: &[&str],
+    builtin_names: &std::collections::HashSet<String>,
 ) -> Result<Vec<super::CustomTemplate>, TemplatesError> {
     let mut seen = HashSet::new();
     let mut result = Vec::with_capacity(file.templates.len());
@@ -49,7 +49,7 @@ pub(crate) fn validate_and_convert(
         let name_lower = entry.name.to_lowercase();
 
         // collision with built-in
-        if builtin_names.contains(&name_lower.as_str()) {
+        if builtin_names.contains(&name_lower) {
             return Err(TemplatesError::Validation(format!(
                 "Template '{}': name conflicts with built-in command",
                 entry.name

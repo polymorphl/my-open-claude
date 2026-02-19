@@ -150,6 +150,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 
 - **Ask mode**: read-only (Read, Grep, ListDir, Glob only); no file writes or shell commands.
 - **Build mode**: full tools (Read, Write, Edit, Bash, etc.).
+- When building from source, built-in prompts can be customized in `config/builtin-commands.json` before running `cargo build`.
 
 ### Custom commands
 

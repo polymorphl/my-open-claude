@@ -2,7 +2,7 @@
 
 use crossterm::event::{KeyCode, KeyModifiers};
 
-use crate::core::commands::BUILTIN_NAMES;
+use crate::core::commands::is_builtin_name;
 use crate::core::templates::{self, CustomTemplate};
 
 use super::HandleResult;
@@ -21,7 +21,7 @@ fn validate_name(name: &str, exclude: Option<&str>, custom_names: &[String]) -> 
         );
     }
     let name_lower = name.to_lowercase();
-    if BUILTIN_NAMES.contains(&name_lower.as_str()) {
+    if is_builtin_name(name) {
         return Some("Name conflicts with built-in command".to_string());
     }
     for other in custom_names {
