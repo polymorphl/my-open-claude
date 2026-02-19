@@ -15,8 +15,18 @@ fn test_data_dir_override() -> Option<PathBuf> {
     std::env::var("TEST_DATA_DIR").ok().map(PathBuf::from)
 }
 
+/// Override config dir for tests via env var. Set `TEST_CONFIG_DIR` before config operations.
+#[cfg(test)]
+fn test_config_dir_override() -> Option<PathBuf> {
+    std::env::var("TEST_CONFIG_DIR").ok().map(PathBuf::from)
+}
+
 /// Config directory (~/.config/my-open-claude/).
 pub fn config_dir() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(p) = test_config_dir_override() {
+        return Some(p);
+    }
     project_dirs().map(|d| d.config_dir().to_path_buf())
 }
 

@@ -69,13 +69,27 @@ my-open-claude update --check
 
 ## Configuration
 
-The app relies on environment variables. Use a `.env` file in the project root:
+The app requires `OPENROUTER_API_KEY`. You can either:
+
+**Option A — Store in config (recommended for installed binaries):**
+
+```sh
+my-open-claude config set-api-key "sk-or-xxx..."
+# Or read from stdin (avoids shell history):
+echo "sk-or-xxx..." | my-open-claude config set-api-key
+```
+
+The key is saved in the config directory and persists across sessions. Useful when running the app from anywhere without a `.env` in the current directory.
+
+**Option B — Use a `.env` file in the project root (for development):**
 
 1. Copy the example file:
    ```sh
    cp env.example .env
    ```
-2. Edit `.env` and set the values (e.g. `OPENROUTER_API_KEY`). See comments in `env.example` for details.
+2. Edit `.env` and set `OPENROUTER_API_KEY`. See comments in `env.example` for details.
+
+**Resolution order:** environment variables > stored key in config dir > `.env` in current directory.
 
 ### Environment variables
 
@@ -94,7 +108,7 @@ The app relies on environment variables. Use a `.env` file in the project root:
 
 | Usage | Linux | macOS | Windows |
 |-------|-------|-------|---------|
-| Config (model, templates.json) | `~/.config/io/polymorphl/my-open-claude/` | `~/Library/Application Support/io.polymorphl.my-open-claude/` | `%APPDATA%\io\polymorphl\my-open-claude\` |
+| Config (api-key, templates.json, model) | `~/.config/io/polymorphl/my-open-claude/` | `~/Library/Application Support/io.polymorphl.my-open-claude/` | `%APPDATA%\io\polymorphl\my-open-claude\` |
 | Conversations | `~/.local/share/io/polymorphl/my-open-claude/conversations/` | `~/Library/Application Support/io.polymorphl.my-open-claude/conversations/` | `%APPDATA%\io\polymorphl\my-open-claude\conversations\` |
 | Cache (models list, 24h TTL) | `~/.cache/io/polymorphl/my-open-claude/models.json` | `~/Library/Caches/io.polymorphl.my-open-claude/models.json` | `%LOCALAPPDATA%\io\polymorphl\my-open-claude\Cache\models.json` |
 

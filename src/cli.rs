@@ -12,7 +12,8 @@ EXAMPLES:
   my-open-claude -p -               Read prompt from stdin
   my-open-claude install            Install to ~/.cargo/bin
   my-open-claude update --check     Check for updates without downloading
-  my-open-claude config             Show config paths and status
+  my-open-claude config show        Show config paths and status
+  my-open-claude config set-api-key [KEY]  Store API key (omit KEY to read from stdin)
   my-open-claude models             List available models
   my-open-claude history list       List conversations
   my-open-claude completions bash   Generate bash completions
@@ -73,7 +74,10 @@ pub enum Commands {
         check: bool,
     },
     /// Show config paths, model, and API key status
-    Config,
+    Config {
+        #[command(subcommand)]
+        subcommand: ConfigSubcommand,
+    },
     /// List available models (tool-capable)
     Models {
         /// Filter models by id or name
@@ -90,6 +94,19 @@ pub enum Commands {
         /// Shell to generate completions for (bash, zsh, fish, powershell, elvish)
         #[arg(value_parser = clap::value_parser!(Shell))]
         shell: Shell,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigSubcommand {
+    /// Show config paths, model, and API key status
+    Show,
+    /// Store API key in config directory (persists across sessions)
+    #[command(name = "set-api-key")]
+    SetApiKey {
+        /// API key; omit to read from stdin (avoids shell history)
+        #[arg(value_name = "KEY")]
+        api_key: Option<String>,
     },
 }
 

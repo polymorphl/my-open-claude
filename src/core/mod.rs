@@ -1,3 +1,4 @@
+pub mod api_key;
 pub mod app;
 pub mod cli;
 pub mod commands;
