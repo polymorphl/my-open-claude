@@ -5,17 +5,24 @@ use clap_complete::Shell;
 
 pub use clap_complete::generate;
 
+const LONG_ABOUT: &str = "\
+Interactive TUI by default. Use -p for single-prompt mode. Supports agent tools
+(read, edit, grep, bash, etc.), custom slash commands, and OpenRouter-compatible APIs.
+";
+
 const AFTER_HELP: &str = "\
 EXAMPLES:
   my-open-claude                    Launch interactive TUI
   my-open-claude -p \"explain X\"     Single prompt, stream response to stdout
-  my-open-claude -p -               Read prompt from stdin
+  my-open-claude -p - -m anthropic/claude-3.5-haiku  Prompt from stdin, specific model
   my-open-claude install            Install to ~/.cargo/bin
   my-open-claude update --check     Check for updates without downloading
   my-open-claude config show        Show config paths and status
   my-open-claude config set-api-key [KEY]  Store API key (omit KEY to read from stdin)
   my-open-claude models             List available models
+  my-open-claude models --query claude  Filter models by name or id
   my-open-claude history list       List conversations
+  my-open-claude history list -l 10  List last 10 conversations
   my-open-claude completions bash   Generate bash completions
 ";
 
@@ -25,7 +32,9 @@ EXAMPLES:
     author,
     version,
     about = "An AI Assistant CLI powered by open-source models",
-    after_help = AFTER_HELP
+    long_about = LONG_ABOUT,
+    after_help = AFTER_HELP,
+    next_line_help = true
 )]
 pub struct Args {
     #[command(subcommand)]
