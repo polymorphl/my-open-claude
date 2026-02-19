@@ -1,9 +1,15 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use super::expand_cwd;
 use super::validation::{TemplateEntry, TemplatesFile, validate_and_convert};
 
-const BUILTIN: &[&str] = &["test", "init", "create-command"];
+fn builtin_set() -> HashSet<String> {
+    ["test", "init", "create-command"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
 
 #[test]
 fn expand_cwd_replaces_placeholder() {
@@ -37,7 +43,7 @@ fn validate_rejects_duplicate_names() {
             },
         ],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("Duplicate"));
 }
 
@@ -51,7 +57,7 @@ fn validate_rejects_builtin_collision() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("built-in"));
 }
 
@@ -65,7 +71,7 @@ fn validate_accepts_valid_custom() {
             mode: "Build".to_string(),
         }],
     };
-    let out = validate_and_convert(file, BUILTIN).unwrap();
+    let out = validate_and_convert(file, &builtin_set()).unwrap();
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].name, "security");
 }
@@ -80,7 +86,7 @@ fn validate_rejects_empty_name() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("cannot be empty"));
 }
 
@@ -94,7 +100,7 @@ fn validate_rejects_name_with_spaces() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(
         err.to_string().contains("letters") || err.to_string().contains("hyphens"),
         "expected validation message about allowed chars, got: {}",
@@ -112,7 +118,7 @@ fn validate_accepts_name_with_hyphens() {
             mode: "Ask".to_string(),
         }],
     };
-    let out = validate_and_convert(file, BUILTIN).unwrap();
+    let out = validate_and_convert(file, &builtin_set()).unwrap();
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].name, "my-command");
 }
@@ -127,7 +133,7 @@ fn validate_accepts_name_with_underscores() {
             mode: "Ask".to_string(),
         }],
     };
-    let out = validate_and_convert(file, BUILTIN).unwrap();
+    let out = validate_and_convert(file, &builtin_set()).unwrap();
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].name, "my_command");
 }
@@ -142,7 +148,7 @@ fn validate_rejects_name_with_special_chars() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(
         err.to_string().contains("letters") || err.to_string().contains("hyphens"),
         "expected validation message about allowed chars, got: {}",
@@ -160,7 +166,7 @@ fn validate_rejects_builtin_collision_case_insensitive() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("built-in"));
 }
 
@@ -182,7 +188,7 @@ fn validate_rejects_duplicate_names_case_insensitive() {
             },
         ],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("Duplicate"));
 }
 
@@ -196,7 +202,7 @@ fn validate_rejects_invalid_mode() {
             mode: "Random".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("mode"));
     assert!(err.to_string().contains("Ask") || err.to_string().contains("Build"));
 }
@@ -211,7 +217,7 @@ fn validate_rejects_mode_lowercase() {
             mode: "ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("mode"));
 }
 
@@ -225,7 +231,7 @@ fn validate_rejects_empty_description() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("description"));
 }
 
@@ -239,7 +245,7 @@ fn validate_rejects_whitespace_only_description() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("description"));
 }
 
@@ -253,7 +259,7 @@ fn validate_rejects_empty_prompt_prefix() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("prompt_prefix"));
 }
 
@@ -267,14 +273,14 @@ fn validate_rejects_whitespace_only_prompt_prefix() {
             mode: "Ask".to_string(),
         }],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("prompt_prefix"));
 }
 
 #[test]
 fn validate_accepts_empty_file() {
     let file = TemplatesFile { templates: vec![] };
-    let out = validate_and_convert(file, BUILTIN).unwrap();
+    let out = validate_and_convert(file, &builtin_set()).unwrap();
     assert!(out.is_empty());
 }
 
@@ -296,7 +302,7 @@ fn validate_accepts_multiple_valid_templates() {
             },
         ],
     };
-    let out = validate_and_convert(file, BUILTIN).unwrap();
+    let out = validate_and_convert(file, &builtin_set()).unwrap();
     assert_eq!(out.len(), 2);
     assert_eq!(out[0].name, "alpha");
     assert_eq!(out[1].name, "beta");
@@ -346,6 +352,6 @@ fn validate_fails_first_invalid_among_many() {
             },
         ],
     };
-    let err = validate_and_convert(file, BUILTIN).unwrap_err();
+    let err = validate_and_convert(file, &builtin_set()).unwrap_err();
     assert!(err.to_string().contains("index 1") || err.to_string().contains("cannot be empty"));
 }

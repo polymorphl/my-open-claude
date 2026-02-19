@@ -69,13 +69,27 @@ my-open-claude update --check
 
 ## Configuration
 
-The app relies on environment variables. Use a `.env` file in the project root:
+The app requires `OPENROUTER_API_KEY`. You can either:
+
+**Option A — Store in config (recommended for installed binaries):**
+
+```sh
+my-open-claude config set-api-key "sk-or-xxx..."
+# Or read from stdin (avoids shell history):
+echo "sk-or-xxx..." | my-open-claude config set-api-key
+```
+
+The key is saved in the config directory and persists across sessions. Useful when running the app from anywhere without a `.env` in the current directory.
+
+**Option B — Use a `.env` file in the project root (for development):**
 
 1. Copy the example file:
    ```sh
    cp env.example .env
    ```
-2. Edit `.env` and set the values (e.g. `OPENROUTER_API_KEY`). See comments in `env.example` for details.
+2. Edit `.env` and set `OPENROUTER_API_KEY`. See comments in `env.example` for details.
+
+**Resolution order:** environment variables > stored key in config dir > `.env` in current directory.
 
 ### Environment variables
 
@@ -86,12 +100,15 @@ The app relies on environment variables. Use a `.env` file in the project root:
 | `OPENROUTER_BASE_URL` | No | API base URL. Default: `https://openrouter.ai/api/v1` |
 | `MY_OPEN_CLAUDE_MAX_CONVERSATIONS` | No | Max number of conversations to keep; older ones are pruned. Default: 50. Set to 0 for no limit. |
 | `MY_OPEN_CLAUDE_SHOW_TIMESTAMPS` | No | Show timestamps (HH:MM) next to messages in the TUI. Default: enabled. Set to 0 or false to disable. |
+| `MY_OPEN_CLAUDE_GIT_CONTEXT` | No | Inject Git context (branch, status) into the system prompt when in a repo. Use `1` or `true` (default) to enable; `0` or `false` to disable. |
+| `MY_OPEN_CLAUDE_GIT_STATUS_MAX_LINES` | No | Max lines of `git status` output to include. Default: 50. |
+| `MY_OPEN_CLAUDE_GIT_STATUS_MAX_BYTES` | No | Max bytes of `git status` output to include. Default: 2048. |
 
 ### Configuration paths
 
 | Usage | Linux | macOS | Windows |
 |-------|-------|-------|---------|
-| Config (model, templates.json) | `~/.config/io/polymorphl/my-open-claude/` | `~/Library/Application Support/io.polymorphl.my-open-claude/` | `%APPDATA%\io\polymorphl\my-open-claude\` |
+| Config (api-key, templates.json, model) | `~/.config/io/polymorphl/my-open-claude/` | `~/Library/Application Support/io.polymorphl.my-open-claude/` | `%APPDATA%\io\polymorphl\my-open-claude\` |
 | Conversations | `~/.local/share/io/polymorphl/my-open-claude/conversations/` | `~/Library/Application Support/io.polymorphl.my-open-claude/conversations/` | `%APPDATA%\io\polymorphl\my-open-claude\conversations\` |
 | Cache (models list, 24h TTL) | `~/.cache/io/polymorphl/my-open-claude/models.json` | `~/Library/Caches/io.polymorphl.my-open-claude/models.json` | `%LOCALAPPDATA%\io\polymorphl\my-open-claude\Cache\models.json` |
 
@@ -147,6 +164,7 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 
 - **Ask mode**: read-only (Read, Grep, ListDir, Glob only); no file writes or shell commands.
 - **Build mode**: full tools (Read, Write, Edit, Bash, etc.).
+- When building from source, built-in prompts can be customized in `config/builtin-commands.json` before running `cargo build`.
 
 ### Custom commands
 

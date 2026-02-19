@@ -8,12 +8,23 @@ mod core;
 mod run;
 mod tui;
 
+use std::env;
+
 use clap::{CommandFactory, Parser};
-use cli::{Args, Commands, HistorySubcommand};
+use cli::{Args, Commands, ConfigSubcommand, HistorySubcommand};
 use dotenv::dotenv;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load stored API key if not in env (before dotenv, so cwd .env can override)
+    if env::var("OPENROUTER_API_KEY")
+        .map(|v| v.trim().is_empty())
+        .unwrap_or(true)
+        && let Some(key) = core::api_key::load_api_key()
+    {
+        // SAFETY: single-threaded early startup, no other env access concurrent
+        unsafe { env::set_var("OPENROUTER_API_KEY", key) };
+    }
     dotenv().ok();
     let args = Args::parse();
 
@@ -58,8 +69,15 @@ fn dispatch_early_command(cmd: &Commands) -> Result<Option<()>, Box<dyn std::err
             }
             Ok(Some(()))
         }
-        Commands::Config => {
-            core::cli::run_config();
+        Commands::Config { subcommand } => {
+            match subcommand {
+                ConfigSubcommand::Show => {
+                    core::cli::run_config();
+                }
+                ConfigSubcommand::SetApiKey { api_key } => {
+                    core::cli::run_config_set_api_key(api_key.clone());
+                }
+            }
             Ok(Some(()))
         }
         Commands::Completions { shell } => {

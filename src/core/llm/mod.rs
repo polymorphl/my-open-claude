@@ -120,6 +120,12 @@ pub async fn chat(req: ChatRequest<'_>) -> Result<ChatResult, ChatError> {
         content.push_str("\n---");
     }
 
+    if let Some(ref git) = req.workspace.git_context {
+        content.push_str("\n\n--- Git context ---\n");
+        content.push_str(&git.formatted());
+        content.push_str("\n---");
+    }
+
     let system_msg = json!({
         "role": "system",
         "content": content

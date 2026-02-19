@@ -198,18 +198,22 @@ impl App {
         let context_length = crate::core::models::resolve_context_length(&model_id);
 
         let (resolved_commands, custom_templates, templates_load_error) =
-            match crate::core::templates::load_templates(crate::core::commands::BUILTIN_NAMES) {
+            match crate::core::templates::load_templates(
+                crate::core::commands::builtin_commands()
+                    .iter()
+                    .map(|c| c.name.as_str()),
+            ) {
                 Ok(custom) => {
                     let custom_clone = custom.clone();
                     match crate::core::commands::resolve_commands(custom) {
                         Ok(resolved) => (resolved, custom_clone, None),
-                        Err(e) => (vec![], vec![], Some(e.safe_mode_message())),
+                        Err(e) => (vec![], vec![], Some::<String>(e.safe_mode_message())),
                     }
                 }
                 Err(e) => (
                     crate::core::commands::resolve_commands(vec![]).unwrap_or_default(),
                     vec![],
-                    Some(e.safe_mode_message()),
+                    Some::<String>(e.safe_mode_message()),
                 ),
             };
 

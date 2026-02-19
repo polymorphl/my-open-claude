@@ -3,7 +3,9 @@
 //! These run without opening the TUI and produce plain text output.
 
 use std::env;
+use std::io::{self, Read};
 
+use crate::core::api_key;
 use crate::core::config::{self, ConfigError};
 use crate::core::history;
 use crate::core::models;
@@ -35,6 +37,39 @@ pub fn run_config() {
     println!("Conversations: {}", data_dir);
     println!("Model:        {} ({})", model, model_source);
     println!("API key:      {}", api_key_status);
+}
+
+/// Run the `config set-api-key` command: store API key in config directory.
+pub fn run_config_set_api_key(api_key: Option<String>) {
+    let key = match api_key {
+        Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+        _ => {
+            let mut buf = String::new();
+            if let Err(e) = io::stdin().read_to_string(&mut buf) {
+                eprintln!("Error reading from stdin: {}", e);
+                std::process::exit(1);
+            }
+            let trimmed = buf.trim().to_string();
+            if trimmed.is_empty() {
+                eprintln!("Error: no API key provided");
+                std::process::exit(1);
+            }
+            trimmed
+        }
+    };
+
+    match api_key::store_api_key(&key) {
+        Ok(()) => {
+            let path = api_key::credentials_path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "config directory".to_string());
+            println!("API key saved to {}", path);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
 
 fn model_source() -> &'static str {

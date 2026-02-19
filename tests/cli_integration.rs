@@ -75,6 +75,7 @@ fn cli_config_outputs_paths_and_status() {
     let tmp = tempfile::TempDir::new().expect("temp dir");
     let output = bin()
         .arg("config")
+        .arg("show")
         .current_dir(tmp.path())
         .output()
         .expect("binary not found - run cargo build first");
