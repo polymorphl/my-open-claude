@@ -87,6 +87,10 @@ pub struct ChatRequest<'a> {
     pub options: ChatOptions,
     /// Workspace root, project type, optional AGENTS.md content.
     pub workspace: &'a Workspace,
+    /// Tools to make available to the agent (injected by caller).
+    pub tools_list: &'a [Box<dyn tools::Tool>],
+    /// Tool definitions for the API (must match tools_list order).
+    pub tools_defs: &'a [Value],
 }
 
 /// Run an agent loop that:
@@ -143,8 +147,8 @@ pub async fn chat(req: ChatRequest<'_>) -> Result<ChatResult, ChatError> {
             client: &client,
             model: req.model,
             context_length: req.context_length,
-            tools_defs: tools::definitions(),
-            tools_list: tools::all(),
+            tools_defs: req.tools_defs,
+            tools_list: req.tools_list,
             messages: &mut messages,
             tool_log: &mut tool_log,
             mode: req.mode,
@@ -173,6 +177,7 @@ pub async fn chat_resume(
     context_length: u64,
     state: ConfirmState,
     confirmed: bool,
+    tools_list: &[Box<dyn tools::Tool>],
     options: impl Into<ChatOptions>,
 ) -> Result<ChatResult, ChatError> {
     let opts = options.into();
@@ -197,7 +202,6 @@ pub async fn chat_resume(
 
     let mut tool_log = state.tool_log;
     let tools_defs = state.tools;
-    let tools_list = tools::all();
 
     agent_loop::run_agent_loop(
         agent_loop::AgentLoopParams {

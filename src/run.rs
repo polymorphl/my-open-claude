@@ -34,7 +34,10 @@ pub async fn run_single_prompt(
     config: &Config,
     workspace: &Workspace,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let prompt_arg = args.prompt.as_ref().expect("prompt is some");
+    let prompt_arg = args
+        .prompt
+        .as_ref()
+        .ok_or_else(|| io::Error::other("prompt is required for single-prompt mode"))?;
     let prompt = if prompt_arg == "-" {
         std::io::read_to_string(std::io::stdin())?
     } else {
@@ -76,6 +79,8 @@ pub async fn run_single_prompt(
         previous_messages: None,
         options,
         workspace,
+        tools_list: core::tools::all(),
+        tools_defs: core::tools::definitions(),
     })
     .await?;
 

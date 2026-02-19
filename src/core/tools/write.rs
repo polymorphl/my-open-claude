@@ -37,6 +37,22 @@ impl super::Tool for WriteTool {
         )
     }
 
+    fn disabled_in_ask_mode(&self) -> bool {
+        true
+    }
+
+    fn is_init_file_target(&self, file_path: &str) -> bool {
+        std::path::Path::new(file_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(|n| {
+                ["agent.md", "agents.md"]
+                    .iter()
+                    .any(|&init| n.eq_ignore_ascii_case(init))
+            })
+            .unwrap_or(false)
+    }
+
     fn args_preview(&self, args: &Value) -> String {
         str_arg(args, "file_path")
     }

@@ -48,6 +48,10 @@ impl super::Tool for EditTool {
         )
     }
 
+    fn disabled_in_ask_mode(&self) -> bool {
+        true
+    }
+
     fn args_preview(&self, args: &Value) -> String {
         str_arg(args, "file_path")
     }

@@ -1,7 +1,5 @@
 //! Execute a single tool call from the agent loop.
 
-use std::path::Path;
-
 use serde_json::{Value, json};
 
 use crate::core::confirm::ConfirmDestructive;
@@ -11,35 +9,7 @@ use super::ChatError;
 use super::ChatResult;
 use super::ConfirmState;
 
-const WRITE_NAME: &str = "Write";
-
-/// File names treated as "init" targets (AGENT.md / AGENTS.md). Case-insensitive for Linux.
-/// Only one Write per session.
-const INIT_FILE_NAMES: &[&str] = &["agent.md", "agents.md"];
-
-fn is_init_file_path(file_path: &str) -> bool {
-    Path::new(file_path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(|n| {
-            INIT_FILE_NAMES
-                .iter()
-                .any(|&init| n.eq_ignore_ascii_case(init))
-        })
-        .unwrap_or(false)
-}
-const EDIT_NAME: &str = "Edit";
-const BASH_NAME: &str = "Bash";
-const READ_NAME: &str = "Read";
-const GREP_NAME: &str = "Grep";
-const LIST_DIR_NAME: &str = "ListDir";
-const GLOB_NAME: &str = "Glob";
 const ASK_MODE_DISABLED: &str = "Ask mode: file modification and command execution are disabled. Use Read, Grep, ListDir, and Glob tools to explore, then respond with an explanation.";
-
-/// Max output size for Read and Bash tool results (32 KB).
-const MAX_OUTPUT_LARGE: usize = 32 * 1024;
-/// Max output size for Grep, ListDir, Glob tool results (16 KB).
-const MAX_OUTPUT_SMALL: usize = 16 * 1024;
 
 /// Truncate a tool result string to the given max bytes, appending a notice.
 pub(crate) fn truncate_tool_output(output: String, max_bytes: usize) -> String {
@@ -57,15 +27,6 @@ pub(crate) fn truncate_tool_output(output: String, max_bytes: usize) -> String {
         &output[..end],
         total
     )
-}
-
-/// Return the max output size for a given tool name, or None for unlimited.
-pub(crate) fn output_limit_for(tool_name: &str) -> Option<usize> {
-    match tool_name {
-        READ_NAME | BASH_NAME => Some(MAX_OUTPUT_LARGE),
-        GREP_NAME | LIST_DIR_NAME | GLOB_NAME => Some(MAX_OUTPUT_SMALL),
-        _ => None,
-    }
 }
 
 /// Interaction mode: "Ask" = explanations only (no write/bash), "Build" = all tools.
@@ -103,13 +64,13 @@ fn execute_bash_tool(
         None => return BashOutcome::Output("Error: missing command argument".to_string()),
     };
 
-    if !tools::is_destructive(command) {
-        return BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME));
+    if !tool.may_need_confirmation(args) {
+        return BashOutcome::Output(tool_result_string(tool.execute(args), tool.name()));
     }
 
     if let Some(cb) = ctx.confirm_destructive {
         return if cb(command) {
-            BashOutcome::Output(tool_result_string(tool.execute(args), BASH_NAME))
+            BashOutcome::Output(tool_result_string(tool.execute(args), tool.name()))
         } else {
             BashOutcome::Output(
                 "Command cancelled (destructive command not confirmed).".to_string(),
@@ -166,54 +127,47 @@ pub(super) fn execute_tool_call(
         progress(&log_line);
     }
 
-    let result = if is_ask_mode(mode)
-        && (name == WRITE_NAME || name == BASH_NAME || name == EDIT_NAME)
-    {
-        ASK_MODE_DISABLED.to_string()
-    } else if name == WRITE_NAME {
-        let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
-        if is_init_file_path(file_path)
-            && let Some(ref mut written) = ctx.init_file_written
-        {
-            if **written {
-                // Inject synthetic result to stop the Write loop; model will get this and should respond with summary.
-                let synthetic = "Already written this session. Do not call Write again. Provide your brief summary to the user now.";
-                std::sync::Arc::make_mut(ctx.messages).push(json!({
-                    "role": "tool",
-                    "tool_call_id": id,
-                    "content": synthetic
-                }));
-                return Ok(None);
-            }
-            **written = true;
-        }
-        match tools_list.iter().find(|t| t.name() == name) {
-            Some(tool) => tool_result_string(tool.execute(&args), name),
-            None => format!("Error: unknown tool '{}'", name),
-        }
-    } else {
-        match tools_list.iter().find(|t| t.name() == name) {
-            Some(tool) => {
-                if name == BASH_NAME {
-                    match execute_bash_tool(tool.as_ref(), &args, &id, mode, ctx) {
-                        BashOutcome::Output(s) => s,
-                        BashOutcome::NeedsConfirmation(state) => {
-                            return Ok(Some(ChatResult::NeedsConfirmation {
-                                command: state.command.clone(),
-                                state,
-                            }));
-                        }
+    let tool_opt = tools_list.iter().find(|t| t.name() == name);
+
+    let result = match tool_opt {
+        Some(tool) => {
+            if is_ask_mode(mode) && tool.disabled_in_ask_mode() {
+                ASK_MODE_DISABLED.to_string()
+            } else if tool
+                .is_init_file_target(args.get("file_path").and_then(|v| v.as_str()).unwrap_or(""))
+            {
+                if let Some(ref mut written) = ctx.init_file_written {
+                    if **written {
+                        let synthetic = "Already written this session. Do not call Write again. Provide your brief summary to the user now.";
+                        std::sync::Arc::make_mut(ctx.messages).push(json!({
+                            "role": "tool",
+                            "tool_call_id": id,
+                            "content": synthetic
+                        }));
+                        return Ok(None);
                     }
-                } else {
-                    tool_result_string(tool.execute(&args), name)
+                    **written = true;
                 }
+                tool_result_string(tool.execute(&args), name)
+            } else if tool.may_need_confirmation(&args) {
+                match execute_bash_tool(tool.as_ref(), &args, &id, mode, ctx) {
+                    BashOutcome::Output(s) => s,
+                    BashOutcome::NeedsConfirmation(state) => {
+                        return Ok(Some(ChatResult::NeedsConfirmation {
+                            command: state.command.clone(),
+                            state,
+                        }));
+                    }
+                }
+            } else {
+                tool_result_string(tool.execute(&args), name)
             }
-            None => format!("Error: unknown tool '{}'", name),
         }
+        None => format!("Error: unknown tool '{}'", name),
     };
 
     // Truncate large tool outputs to stay within context budget.
-    let result = match output_limit_for(name) {
+    let result = match tool_opt.and_then(|t| t.output_limit()) {
         Some(limit) => truncate_tool_output(result, limit),
         None => result,
     };
@@ -241,25 +195,6 @@ mod tests {
     fn is_ask_mode_false() {
         assert!(!is_ask_mode("Build"));
         assert!(!is_ask_mode("build"));
-    }
-
-    #[test]
-    fn output_limit_for_read_and_bash() {
-        assert_eq!(output_limit_for("Read"), Some(32 * 1024));
-        assert_eq!(output_limit_for("Bash"), Some(32 * 1024));
-    }
-
-    #[test]
-    fn output_limit_for_grep_listdir_glob() {
-        assert_eq!(output_limit_for("Grep"), Some(16 * 1024));
-        assert_eq!(output_limit_for("ListDir"), Some(16 * 1024));
-        assert_eq!(output_limit_for("Glob"), Some(16 * 1024));
-    }
-
-    #[test]
-    fn output_limit_for_unknown() {
-        assert_eq!(output_limit_for("Edit"), None);
-        assert_eq!(output_limit_for("Write"), None);
     }
 
     #[test]

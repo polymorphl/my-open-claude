@@ -32,6 +32,7 @@ cargo run -- -p "prompt"        # Single-prompt mode
 ```
 
 ## Project Structure
+- Apply SOLID principles (see project-structure rule).
 - Strict layered architecture:
   - `core/`: Business logic (NO UI dependencies)
   - `tui/`: Text User Interface

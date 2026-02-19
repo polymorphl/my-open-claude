@@ -45,6 +45,10 @@ impl super::Tool for ListDirTool {
         )
     }
 
+    fn output_limit(&self) -> Option<usize> {
+        Some(super::MAX_OUTPUT_SMALL)
+    }
+
     fn args_preview(&self, args: &Value) -> String {
         str_arg(args, "path")
     }

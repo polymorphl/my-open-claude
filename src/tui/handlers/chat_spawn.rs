@@ -78,6 +78,8 @@ pub fn spawn_chat(
             previous_messages: prev_messages,
             options,
             workspace: &workspace,
+            tools_list: crate::core::tools::all(),
+            tools_defs: crate::core::tools::definitions(),
         }));
         let _ = result_tx.send(result);
     })
@@ -100,6 +102,7 @@ pub fn spawn_chat_resume(
             context_length,
             state,
             confirmed,
+            crate::core::tools::all(),
             options,
         ));
         let _ = result_tx.send(result);

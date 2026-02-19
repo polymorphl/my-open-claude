@@ -106,6 +106,14 @@ src/
 - Document modules with `//!` at the top of the file.
 - Shared helpers stay in the relevant module or a dedicated submodule.
 
+## SOLID Principles
+
+- **S (Single Responsibility)**: One module/struct = one clear purpose. Extract policies (output limits, Ask-mode restrictions) into dedicated modules.
+- **O (Open/Closed)**: Extend via `impl Trait` rather than modifying existing code. New tools = `impl Tool` without touching `tool_execution`. Prefer trait methods (`output_limit()`, `disabled_in_ask_mode()`) over hard-coded `match` on tool names.
+- **L (Liskov Substitution)**: Any trait implementation must be substitutable. Ensure `Tool::execute` and similar methods honor their contract.
+- **I (Interface Segregation)**: Keep traits small and focused (e.g. `ConfirmDestructive` as a closure, not a heavy interface).
+- **D (Dependency Inversion)**: Depend on abstractions (traits), not concrete types. Prefer injecting `tools_list` into `ChatRequest` over calling `tools::all()` from the LLM layer.
+
 ## File Length Guidelines
 
 - **~250 lines**: Consider extracting cohesive blocks into a submodule (e.g. `handle_model_selector`, `handle_history_selector`).

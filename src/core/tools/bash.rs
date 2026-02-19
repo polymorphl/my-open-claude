@@ -64,6 +64,20 @@ impl super::Tool for BashTool {
         str_arg(args, "command")
     }
 
+    fn output_limit(&self) -> Option<usize> {
+        Some(super::MAX_OUTPUT_LARGE)
+    }
+
+    fn disabled_in_ask_mode(&self) -> bool {
+        true
+    }
+
+    fn may_need_confirmation(&self, args: &Value) -> bool {
+        args.get("command")
+            .and_then(|v| v.as_str())
+            .is_some_and(is_destructive)
+    }
+
     fn execute(&self, args: &Value) -> Result<String, super::ToolError> {
         let parsed: BashArgs = serde_json::from_value(args.clone())
             .map_err(|e| std::io::Error::other(format!("Invalid arguments: {}", e)))?;
