@@ -11,21 +11,33 @@ This Rust project follows a layered architecture: business logic (`core`), inter
 
 ```
 src/
-├── main.rs              # Entry point, CLI parsing, orchestration
+├── main.rs              # Entry point, CLI parsing, subcommand dispatch (TUI / single prompt)
+├── cli.rs               # Argument parsing, subcommands, completions generation
+├── run.rs               # Logger init, single-prompt mode, TUI launch
 ├── core/                # Business logic (no UI dependencies)
+│   ├── app.rs           # App identity: NAME, VERSION, VENDOR (from Cargo.toml)
+│   ├── cli.rs           # CLI-only commands: config, models list, history list
 │   ├── config.rs        # Configuration (env, API)
 │   ├── confirm.rs       # Confirmation abstraction (CLI/TUI)
 │   ├── credits.rs       # OpenRouter credits fetching
+│   ├── install.rs       # Install binary to ~/.cargo/bin (cargo install)
 │   ├── message.rs       # API message content extraction
 │   ├── paths.rs         # Config/cache/data dir paths
 │   ├── persistence.rs   # Persistence (last model used)
+│   ├── update.rs        # Self-update from GitHub releases
 │   ├── util.rs          # Generic helpers (filter_by_query)
 │   ├── commands.rs      # Slash commands definitions
+│   ├── templates/       # Custom slash command templates
+│   │   ├── mod.rs       # Load, save, expand templates
+│   │   ├── validation.rs# TemplatesFile validation, collision check
+│   │   └── tests.rs
 │   ├── workspace/       # Workspace detection
 │   │   └── mod.rs       # Root, project type, AGENTS.md loading
 │   ├── history/         # Conversation persistence
 │   │   ├── mod.rs       # Public API, sanitize, filter
-│   │   └── storage.rs   # Index/conv file I/O
+│   │   ├── storage.rs   # Index/conv file I/O
+│   │   ├── index.rs     # ConversationMeta, listing, filtering, mutations
+│   │   └── tests.rs
 │   ├── llm/             # Agent loop, chat, streaming
 │   │   ├── mod.rs       # Chat, chat_resume, public API
 │   │   ├── agent_loop.rs# Streaming loop, tool dispatch
@@ -56,20 +68,31 @@ src/
     ├── chat_result.rs   # handle_chat_result, save_conversation_if_dirty
     ├── constants.rs     # UI constants (suggestions, colors, scroll, poll)
     ├── shortcuts.rs     # Keyboard shortcut mapping
-    ├── text.rs          # Markdown parsing, line wrapping
+    ├── syntax.rs        # Code block syntax highlighting (syntect)
+    ├── text/            # Markdown parsing, line wrapping
+    │   ├── mod.rs       # Public API, normalize_code_operators
+    │   ├── markdown.rs  # Inline markdown parsing
+    │   ├── segments.rs  # MessageSegment, parse_message_segments
+    │   ├── wrap.rs      # wrap_message
+    │   └── tests.rs
     ├── handlers/        # Keyboard/mouse event handling
     │   ├── mod.rs       # Orchestrator, handle_key, handle_mouse
     │   ├── chat_spawn.rs# Spawn chat/chat_resume in background
     │   ├── confirm.rs   # Confirm popup (y/n)
-    │   ├── history_selector.rs  # History picker
+    │   ├── delete_command.rs   # Delete command popup
+    │   ├── command_form.rs     # Create/update command form popup
+    │   ├── history_selector.rs # History picker
     │   ├── input.rs     # Main input, send, scroll
-    │   ├── model_selector.rs    # Model picker popup
-    │   └── shortcuts.rs  # History, NewConv, ModelSelector, Quit keys
+    │   ├── model_selector.rs   # Model picker popup
+    │   ├── popups.rs    # Key handlers for model/history selector popups
+    │   └── shortcuts.rs # History, NewConv, ModelSelector, Quit keys
     └── draw/            # Widget rendering
         ├── mod.rs       # Layout orchestration
         ├── header.rs    # Logo, title, model, credits
         ├── history.rs   # Chat history with scrollbar
         ├── history_selector_popup.rs
+        ├── delete_command_popup.rs
+        ├── command_form_popup.rs
         ├── input/       # Input block, suggestions, bottom bar
         │   ├── mod.rs
         │   ├── bar.rs   # Bottom bar
@@ -92,12 +115,14 @@ src/
 | New agent tool | `core/tools/<name>.rs` |
 | LLM / agent logic | `core/llm/` |
 | New models submodule | `core/models/<name>.rs` |
-| Persistence (index, files) | `core/history/storage.rs` |
+| Custom slash commands / templates | `core/templates/` |
+| Persistence (index, files) | `core/history/storage.rs`, `core/history/index.rs` |
 | Rendering, widgets, layout | `tui/draw/` |
 | Event handling (keyboard, mouse) | `tui/handlers/` |
 | Chat result handling, save logic | `tui/chat_result.rs` |
+| Text formatting, markdown | `tui/text/` |
 | App state, message structures | `tui/app/` |
-| CLI parsing, orchestration | `main.rs` |
+| CLI parsing, orchestration | `main.rs`, `cli.rs`, `run.rs` |
 
 ## Rust Conventions
 
