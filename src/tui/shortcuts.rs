@@ -10,7 +10,7 @@
 //! | History       | Alt+H, Esc+h (Option as meta), Mac chars |
 //! | New conv      | Ctrl+N                                      |
 //! | Model selector| Alt+M, Esc+m, µ (Option+M Mac)          |
-//! | Copy message  | Cmd+C (⌘C on macOS)                      |
+//! | Copy message  | ⌘C (macOS) / Ctrl+Shift+C (Linux, Windows) |
 //! | Quit          | Ctrl+C                                   |
 //!
 //! On macOS, Option+key can send:
@@ -185,6 +185,11 @@ pub mod labels {
 
     const DIM: Color = Color::DarkGray;
 
+    #[cfg(target_os = "macos")]
+    const COPY_KEY: &str = "  ⌘C ";
+    #[cfg(not(target_os = "macos"))]
+    const COPY_KEY: &str = "  Ctrl+Shift+C ";
+
     pub fn bottom_bar(is_streaming: bool) -> Text<'static> {
         if is_streaming {
             Text::from(Line::from(vec![
@@ -212,7 +217,7 @@ pub mod labels {
                     Span::raw("new"),
                     Span::styled("  Alt+M ", DIM),
                     Span::raw("model"),
-                    Span::styled("  ⌘C ", DIM),
+                    Span::styled(COPY_KEY, DIM),
                     Span::raw("copy"),
                     Span::styled("  Ctrl+C ", DIM),
                     Span::raw("quit"),

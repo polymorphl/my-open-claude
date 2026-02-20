@@ -33,6 +33,17 @@ use self::shortcuts::{ShortcutContext, handle_shortcut};
 
 const CREDITS_URL: &str = "https://openrouter.ai/settings/credits";
 
+/// True if key is the platform-appropriate copy shortcut (⌘C on macOS, Ctrl+Shift+C elsewhere).
+fn is_copy_shortcut(code: crossterm::event::KeyCode, modifiers: KeyModifiers) -> bool {
+    if code != crossterm::event::KeyCode::Char('c') {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    return modifiers.contains(KeyModifiers::SUPER);
+    #[cfg(not(target_os = "macos"))]
+    return modifiers.contains(KeyModifiers::CONTROL) && modifiers.contains(KeyModifiers::SHIFT);
+}
+
 /// Holds receivers for a chat request in progress (progress logs, streamed content, final result).
 pub struct PendingChat {
     pub progress_rx: mpsc::Receiver<String>,
@@ -250,9 +261,8 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
         }
     }
 
-    // Cmd+C (SUPER on macOS): copy selection, else message under cursor or at scroll position.
-    if key.code == crossterm::event::KeyCode::Char('c')
-        && key.modifiers.contains(KeyModifiers::SUPER)
+    // Copy: ⌘C on macOS, Ctrl+Shift+C on Linux/Windows.
+    if is_copy_shortcut(key.code, key.modifiers)
         && app.confirm_popup.is_none()
         && app.model_selector.is_none()
         && app.history_selector.is_none()
