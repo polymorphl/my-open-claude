@@ -10,6 +10,7 @@
 //! | History       | Alt+H, Esc+h (Option as meta), Mac chars |
 //! | New conv      | Ctrl+N                                      |
 //! | Model selector| Alt+M, Esc+m, µ (Option+M Mac)          |
+//! | Copy message  | Cmd+C (⌘C on macOS)                      |
 //! | Quit          | Ctrl+C                                   |
 //!
 //! On macOS, Option+key can send:
@@ -211,6 +212,8 @@ pub mod labels {
                     Span::raw("new"),
                     Span::styled("  Alt+M ", DIM),
                     Span::raw("model"),
+                    Span::styled("  ⌘C ", DIM),
+                    Span::raw("copy"),
                     Span::styled("  Ctrl+C ", DIM),
                     Span::raw("quit"),
                 ]),

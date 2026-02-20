@@ -85,6 +85,15 @@ pub struct DeleteCommandState {
     pub selected: Vec<bool>,
 }
 
+/// Target for copy-on-click: either the full message or a code block's content.
+#[derive(Clone)]
+pub enum CopyTarget {
+    /// Copy the entire message at msg_idx.
+    Message(usize),
+    /// Copy only the code block content.
+    Code(String),
+}
+
 /// State for the history selector popup (Alt+H).
 pub struct HistorySelectorState {
     pub conversations: Vec<ConversationMeta>,
@@ -158,6 +167,16 @@ pub struct App {
     pub(crate) history_area_rect: Option<Rect>,
     /// Mouse is over a message block; used for cursor style.
     pub(crate) hovering_message_block: bool,
+    /// Index of the message under the mouse (for Cmd+C copy).
+    pub(crate) hovered_message_idx: Option<usize>,
+    /// Copy regions (start_line, end_line, target) for click-to-copy. Code blocks first, then message fallback.
+    pub(crate) copy_regions: Vec<(usize, usize, CopyTarget)>,
+    /// Text selection for copy: (start_line, start_col, end_line, end_col) in buffer coordinates.
+    pub(crate) selection: Option<(usize, usize, usize, usize)>,
+    /// Mouse drag start position; used to distinguish click vs drag.
+    pub(crate) selection_drag_start: Option<(usize, usize)>,
+    /// Rendered line strings (one per buffer line); used for selection extract and highlight.
+    pub(crate) rendered_lines: Vec<String>,
     /// When set, show "Copied!" toast until this instant.
     pub(crate) copy_toast_until: Option<Instant>,
     /// When set, show "Save failed" toast until this instant.
@@ -242,6 +261,11 @@ impl App {
             show_timestamps,
             history_area_rect: None,
             hovering_message_block: false,
+            hovered_message_idx: None,
+            copy_regions: vec![],
+            selection: None,
+            selection_drag_start: None,
+            rendered_lines: vec![],
             copy_toast_until: None,
             save_error_toast_until: None,
             current_conversation_id: None,

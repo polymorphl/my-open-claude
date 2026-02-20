@@ -7,7 +7,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
-use super::super::app::{App, ChatMessage};
+use super::super::app::{App, ChatMessage, CopyTarget};
 use super::super::constants::{ACCENT, ACCENT_SECONDARY};
 use super::super::syntax::{highlight_code_line, slice_spans_by_range};
 use super::super::text::{
@@ -18,6 +18,67 @@ use super::super::text::{
 /// Repeat a character to fill width (approximate; chars may have different display widths).
 fn repeat_char(c: char, n: usize) -> String {
     std::iter::repeat_n(c, n).collect()
+}
+
+/// Concatenate all span contents in a line to a plain string.
+fn line_to_string(line: &Line<'_>) -> String {
+    line.spans.iter().map(|s| s.content.as_ref()).collect()
+}
+
+/// Apply selection highlight (REVERSED) to a line for columns [col_start, col_end).
+fn apply_selection_to_line(
+    line: &Line<'static>,
+    col_start: usize,
+    col_end: usize,
+) -> Line<'static> {
+    if col_start >= col_end {
+        return line.clone();
+    }
+    let total_len: usize = line
+        .spans
+        .iter()
+        .map(|s| s.content.as_ref().chars().count())
+        .sum();
+    if col_start >= total_len {
+        return line.clone();
+    }
+    let col_end = col_end.min(total_len);
+
+    let mut result = Vec::new();
+    let mut pos = 0;
+    for span in &line.spans {
+        let s = span.content.as_ref();
+        let len = s.chars().count();
+        let span_end = pos + len;
+
+        if span_end <= col_start || pos >= col_end {
+            result.push(span.clone());
+        } else {
+            let seg_start = col_start.saturating_sub(pos);
+            let seg_end = (col_end - pos).min(len);
+            if seg_start > 0 {
+                let before: String = s.chars().take(seg_start).collect();
+                result.push(Span::styled(before, span.style));
+            }
+            if seg_end > seg_start {
+                let sel: String = s
+                    .chars()
+                    .skip(seg_start)
+                    .take(seg_end - seg_start)
+                    .collect();
+                result.push(Span::styled(
+                    sel,
+                    span.style.add_modifier(Modifier::REVERSED),
+                ));
+            }
+            if seg_end < len {
+                let after: String = s.chars().skip(seg_end).collect();
+                result.push(Span::styled(after, span.style));
+            }
+        }
+        pos = span_end;
+    }
+    Line::from(result)
 }
 
 const TOOL_LOG_PREFIX: &str = "→ ";
@@ -102,7 +163,13 @@ struct MessageBlockParams<'a> {
 
 /// Add a User or Assistant message block with borders, code blocks, and separator.
 /// Returns (start_line, end_line) for this block in the lines array.
-fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) -> (usize, usize) {
+/// Pushes copy regions to copy_regions: code blocks first (for priority), then message fallback.
+fn add_message_block(
+    lines: &mut Vec<Line<'static>>,
+    copy_regions: &mut Vec<(usize, usize, CopyTarget)>,
+    msg_idx: usize,
+    p: MessageBlockParams<'_>,
+) -> (usize, usize) {
     let border_color = if p.is_user {
         Color::DarkGray
     } else {
@@ -163,6 +230,7 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
                 }
             }
             MessageSegment::CodeBlock { lang, code } => {
+                let code_block_start = lines.len();
                 let lang_label = if lang.is_empty() { "code" } else { lang };
                 let code_header = format!("┌─ {} ", lang_label);
                 let code_trail_len =
@@ -205,6 +273,12 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
                     Span::styled("│ ", border_style),
                     Span::styled(code_footer, Style::default().fg(ACCENT_SECONDARY)),
                 ]));
+                let code_block_end = lines.len();
+                copy_regions.push((
+                    code_block_start,
+                    code_block_end,
+                    CopyTarget::Code(code.to_string()),
+                ));
             }
         }
     }
@@ -232,6 +306,8 @@ fn add_message_block(lines: &mut Vec<Line<'static>>, p: MessageBlockParams<'_>) 
     )));
 
     let end = lines.len();
+    // Message fallback: clicking on text (non-code) copies the full message.
+    copy_regions.push((start, end, CopyTarget::Message(msg_idx)));
     (start, end)
 }
 
@@ -249,6 +325,7 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
 
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut message_line_ranges: Vec<(usize, usize, usize)> = Vec::new();
+    let mut copy_regions: Vec<(usize, usize, CopyTarget)> = Vec::new();
 
     let msg_count = app.messages.len();
     for (msg_idx, msg) in app.messages.iter().enumerate() {
@@ -261,6 +338,8 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
             ChatMessage::User(s) => {
                 let (start, end) = add_message_block(
                     &mut lines,
+                    &mut copy_regions,
+                    msg_idx,
                     MessageBlockParams {
                         label: "You",
                         content: s,
@@ -280,6 +359,8 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
                     app.is_streaming && msg_idx == msg_count.saturating_sub(1);
                 let (start, end) = add_message_block(
                     &mut lines,
+                    &mut copy_regions,
+                    msg_idx,
                     MessageBlockParams {
                         label: "Assistant",
                         content: s,
@@ -308,6 +389,10 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     }
 
     app.message_line_ranges = message_line_ranges;
+    app.copy_regions = copy_regions;
+
+    // Store rendered line strings for selection extract.
+    app.rendered_lines = lines.iter().map(line_to_string).collect();
 
     let total_lines = lines.len();
     let visible = text_area.height as usize;
@@ -316,7 +401,39 @@ pub(crate) fn draw_history(f: &mut Frame, app: &mut App, history_area: Rect) {
     let scroll_pos = app.scroll_line().min(max_scroll);
     let start = scroll_pos;
     let end = (start + visible).min(total_lines);
-    let visible_lines: Vec<Line> = lines.into_iter().skip(start).take(end - start).collect();
+
+    // Apply selection highlight to visible lines.
+    let visible_lines: Vec<Line> = if let Some((sl, sc, el, ec)) = app.selection {
+        lines
+            .into_iter()
+            .enumerate()
+            .skip(start)
+            .take(end - start)
+            .map(|(global_idx, line)| {
+                if global_idx >= sl && global_idx <= el {
+                    let line_len = app
+                        .rendered_lines
+                        .get(global_idx)
+                        .map(|s| s.chars().count())
+                        .unwrap_or(0);
+                    let (line_col_start, line_col_end) = if sl == el {
+                        (sc.min(ec), sc.max(ec))
+                    } else if global_idx == sl {
+                        (sc, line_len)
+                    } else if global_idx == el {
+                        (0, ec)
+                    } else {
+                        (0, line_len)
+                    };
+                    apply_selection_to_line(&line, line_col_start, line_col_end)
+                } else {
+                    line
+                }
+            })
+            .collect()
+    } else {
+        lines.into_iter().skip(start).take(end - start).collect()
+    };
 
     f.render_widget(Paragraph::new(visible_lines), text_area);
 
