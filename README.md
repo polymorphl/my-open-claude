@@ -19,6 +19,7 @@ LLM-powered coding assistant written in Rust. It understands code and performs a
 - **Persistent conversation history**: conversations saved to disk; load with Alt+H, new conversation with Ctrl+N
 - **Credit balance**: OpenRouter balance displayed in the header; click to open your account settings
 - **Custom slash commands**: create, update, and delete your own prompt shortcuts; saved in `templates.json`
+- **Copy to clipboard**: copy messages or code blocks with ⌘C (macOS) / Ctrl+Shift+C; click-to-copy on code blocks
 
 ## Prerequisites
 
@@ -136,7 +137,13 @@ The header shows your OpenRouter credit balance (total minus usage). Click it to
 
 - **Alt+H** : open conversation history
 - **Ctrl+N** : new conversation (current one is saved first)
+- **⌘C** (macOS) / **Ctrl+Shift+C** : copy focused message or selected code block to clipboard
 - Conversations are saved automatically after each turn and on exit. A `*` in the title indicates unsaved changes.
+
+### Copy to clipboard
+
+- **Keyboard**: press ⌘C (macOS) or Ctrl+Shift+C (Linux, Windows) to copy the focused message or the current text selection.
+- **Click-to-copy**: click on a code block to copy its content directly; a "Copied" toast confirms success.
 
 ### Model selection
 
@@ -183,12 +190,20 @@ Type `/` in the input to open an autocomplete menu. Each command prepends a prom
 
 ## Project structure
 
-- `src/main.rs` — entry point, CLI parsing, TUI or prompt mode launch
-- `src/core/` — business logic: config, credits, confirm, persistence, history (conversations), LLM (agent loop, tools), models (fetch, cache)
-- `src/core/llm/` — chat, agent loop, tool execution, streaming
-- `src/core/models/` — model discovery, 24h cache, filtering
-- `src/core/tools/` — read, write, edit, bash, grep, list_dir, glob
-- `src/tui/` — terminal UI: app/ (state, messages), handlers (keyboard/mouse), draw (header, history, input, popups)
+- `src/main.rs` — entry point, CLI parsing, subcommand dispatch, TUI or prompt mode launch
+- `src/cli.rs` — argument parsing, subcommands, completions generation
+- `src/run.rs` — logger init, single-prompt mode, TUI launch
+- `src/core/` — business logic (no UI dependencies)
+  - `config.rs`, `api_key.rs` — configuration and stored API key
+  - `credits.rs`, `confirm.rs`, `persistence.rs` — credits, confirmation abstraction, last model
+  - `commands.rs`, `templates/` — slash commands (builtin + custom)
+  - `history/` — conversation persistence (index, storage)
+  - `llm/` — chat, agent loop, tool execution, streaming, context truncation
+  - `models/` — model discovery, 24h cache, filtering
+  - `tools/` — read, write, edit, bash, grep, list_dir, glob, ignore
+  - `workspace/` — workspace detection, AGENTS.md loading
+  - `install.rs`, `update.rs`, `paths.rs`, `message.rs`, `util.rs` — misc
+- `src/tui/` — terminal UI: app/ (state, messages, CopyTarget), handlers (keyboard, mouse, selection/copy), draw (header, history, input, popups)
 
 ## Community
 

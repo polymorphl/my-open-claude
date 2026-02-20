@@ -16,6 +16,7 @@ src/
 ├── run.rs               # Logger init, single-prompt mode, TUI launch
 ├── core/                # Business logic (no UI dependencies)
 │   ├── app.rs           # App identity: NAME, VERSION, VENDOR (from Cargo.toml)
+│   ├── api_key.rs       # Stored API key in config dir
 │   ├── cli.rs           # CLI-only commands: config, models list, history list
 │   ├── config.rs        # Configuration (env, API)
 │   ├── confirm.rs       # Confirmation abstraction (CLI/TUI)
@@ -85,6 +86,7 @@ src/
     │   ├── input.rs     # Main input, send, scroll
     │   ├── model_selector.rs   # Model picker popup
     │   ├── popups.rs    # Key handlers for model/history selector popups
+    │   ├── selection.rs # Copy: hit-test, clipboard (⌘C / Ctrl+Shift+C, click-to-copy)
     │   └── shortcuts.rs # History, NewConv, ModelSelector, Quit keys
     └── draw/            # Widget rendering
         ├── mod.rs       # Layout orchestration
