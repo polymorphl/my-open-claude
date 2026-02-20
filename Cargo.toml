@@ -44,5 +44,9 @@ self_update = { version = "0.36", features = [
 ] }
 semver = "1"
 
+[build-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.149"
+
 [dev-dependencies]
 tempfile = "3"

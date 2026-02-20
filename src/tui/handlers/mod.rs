@@ -8,9 +8,10 @@ mod history_selector;
 mod input;
 mod model_selector;
 mod popups;
+mod selection;
 mod shortcuts;
 
-use crossterm::event::{KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::layout::Position;
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -24,13 +25,24 @@ use crate::core::config::Config;
 use crate::core::llm;
 use crate::core::models::ModelInfo;
 
-use super::app::App;
+use super::app::{App, CopyTarget};
 use super::constants;
 use super::shortcuts::Shortcut;
 
 use self::shortcuts::{ShortcutContext, handle_shortcut};
 
 const CREDITS_URL: &str = "https://openrouter.ai/settings/credits";
+
+/// True if key is the platform-appropriate copy shortcut (⌘C on macOS, Ctrl+Shift+C elsewhere).
+fn is_copy_shortcut(code: crossterm::event::KeyCode, modifiers: KeyModifiers) -> bool {
+    if code != crossterm::event::KeyCode::Char('c') {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    return modifiers.contains(KeyModifiers::SUPER);
+    #[cfg(not(target_os = "macos"))]
+    return modifiers.contains(KeyModifiers::CONTROL) && modifiers.contains(KeyModifiers::SHIFT);
+}
 
 /// Holds receivers for a chat request in progress (progress logs, streamed content, final result).
 pub struct PendingChat {
@@ -76,33 +88,14 @@ pub(crate) fn would_esc_start_meta_sequence(
         && pending_chat.is_none()
 }
 
-/// Check if position is over a copyable message block; return Some(msg_idx) if so.
-fn hit_test_message(app: &App, pos: Position) -> Option<usize> {
-    let history_rect = app.history_area_rect?;
-    if !history_rect.contains(pos) {
-        return None;
-    }
-    let rel_row = pos.y.saturating_sub(history_rect.y) as usize;
-    let scroll_pos = app.scroll_line();
-    let clicked_line = scroll_pos + rel_row;
-    app.message_line_ranges
-        .iter()
-        .find_map(|&(msg_idx, start, end)| {
-            if start <= clicked_line && clicked_line < end {
-                Some(msg_idx)
-            } else {
-                None
-            }
-        })
-}
-
 /// Handle a mouse event.
 pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> HandleResult {
     let pos = Position::new(mouse.column.saturating_sub(1), mouse.row.saturating_sub(1));
     let over_credits = app
         .credits_header_rect
         .is_some_and(|rect| rect.contains(pos));
-    let over_message = hit_test_message(app, pos);
+    let over_message = selection::hit_test_message(app, pos);
+    let buffer_coords = selection::pos_to_buffer_coords(app, pos);
 
     if app.confirm_popup.is_none()
         && app.model_selector.is_none()
@@ -111,9 +104,43 @@ pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> Handl
         && app.delete_command_popup.is_none()
     {
         match mouse.kind {
-            MouseEventKind::Moved => {
-                let pointer = over_credits || over_message.is_some();
+            MouseEventKind::Down(MouseButton::Left) => {
+                if over_credits {
+                    // Click on credits handled on Up
+                } else if let Some((line, col)) = buffer_coords {
+                    app.selection_drag_start = Some((line, col));
+                    app.selection = Some((line, col, line, col));
+                } else {
+                    app.selection_drag_start = None;
+                    app.selection = None;
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let (Some((start_line, start_col)), Some((line, col))) =
+                    (app.selection_drag_start, buffer_coords)
+                {
+                    let (sl, sc, el, ec) = if (line, col) < (start_line, start_col) {
+                        (line, col, start_line, start_col)
+                    } else {
+                        (start_line, start_col, line, col)
+                    };
+                    app.selection = Some((sl, sc, el, ec));
+                }
+                let pointer =
+                    over_credits || over_message.is_some() || app.selection_drag_start.is_some();
                 let prev_pointer = app.hovering_credits || app.hovering_message_block;
+                app.hovered_message_idx = over_message;
+                if prev_pointer != pointer {
+                    app.hovering_credits = over_credits;
+                    app.hovering_message_block = over_message.is_some();
+                    set_cursor_shape(pointer);
+                }
+            }
+            MouseEventKind::Moved => {
+                let pointer =
+                    over_credits || over_message.is_some() || app.selection_drag_start.is_some();
+                let prev_pointer = app.hovering_credits || app.hovering_message_block;
+                app.hovered_message_idx = over_message;
                 if prev_pointer != pointer {
                     app.hovering_credits = over_credits;
                     app.hovering_message_block = over_message.is_some();
@@ -123,23 +150,46 @@ pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> Handl
             MouseEventKind::Up(MouseButton::Left) => {
                 if over_credits {
                     let _ = opener::open(CREDITS_URL);
-                } else if let Some(msg_idx) = over_message
-                    && let Some(content) = app.messages.get(msg_idx).and_then(|m| match m {
-                        super::app::ChatMessage::User(s)
-                        | super::app::ChatMessage::Assistant(s) => Some(s.clone()),
-                        _ => None,
-                    })
-                    && arboard::Clipboard::new()
-                        .and_then(|mut c| c.set_text(content))
-                        .is_ok()
-                {
-                    app.copy_toast_until = Some(Instant::now() + Duration::from_secs(2));
+                } else if let Some(drag_start) = app.selection_drag_start.take() {
+                    let is_click = app
+                        .selection
+                        .map(|(sl, sc, el, ec)| (sl, sc) == (el, ec) || drag_start == (sl, sc))
+                        .unwrap_or(true);
+                    if is_click {
+                        if let Some(target) = selection::hit_test_copy_region(app, pos) {
+                            let content = match &target {
+                                CopyTarget::Message(idx) => {
+                                    app.messages.get(*idx).and_then(|m| match m {
+                                        super::app::ChatMessage::User(s)
+                                        | super::app::ChatMessage::Assistant(s) => Some(s.clone()),
+                                        _ => None,
+                                    })
+                                }
+                                CopyTarget::Code(code) => Some(code.clone()),
+                            };
+                            if let Some(content) = content
+                                && arboard::Clipboard::new()
+                                    .and_then(|mut c| c.set_text(content))
+                                    .is_ok()
+                            {
+                                app.copy_toast_until =
+                                    Some(Instant::now() + Duration::from_secs(2));
+                            }
+                        }
+                        app.selection = None;
+                    }
+                } else if !over_credits && buffer_coords.is_none() {
+                    app.selection = None;
                 }
             }
             MouseEventKind::ScrollUp => {
+                app.selection = None;
+                app.selection_drag_start = None;
                 app.scroll_up(constants::SCROLL_LINES_SMALL);
             }
             MouseEventKind::ScrollDown => {
+                app.selection = None;
+                app.selection_drag_start = None;
                 app.scroll_down(constants::SCROLL_LINES_SMALL);
             }
             _ => {}
@@ -209,6 +259,25 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
                 },
             );
         }
+    }
+
+    // Copy: ⌘C on macOS, Ctrl+Shift+C on Linux/Windows.
+    if is_copy_shortcut(key.code, key.modifiers)
+        && app.confirm_popup.is_none()
+        && app.model_selector.is_none()
+        && app.history_selector.is_none()
+        && app.command_form_popup.is_none()
+        && app.delete_command_popup.is_none()
+    {
+        if selection::try_copy_selection(app) {
+            // Selection copied
+        } else if let Some(msg_idx) = app
+            .hovered_message_idx
+            .or_else(|| selection::message_idx_at_scroll_line(app))
+        {
+            selection::try_copy_message(app, msg_idx);
+        }
+        return HandleResult::Continue;
     }
 
     // Esc: in slash mode, clear input; else cancel in-flight or start Option+key sequence.

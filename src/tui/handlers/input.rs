@@ -234,27 +234,39 @@ pub(crate) fn handle_main_input(
         }
 
         (KeyCode::Up, _) => {
+            app.selection = None;
+            app.selection_drag_start = None;
             app.scroll_up(constants::SCROLL_LINES_SMALL);
             super::HandleResult::Continue
         }
         (KeyCode::Down, _) => {
+            app.selection = None;
+            app.selection_drag_start = None;
             app.scroll_down(constants::SCROLL_LINES_SMALL);
             super::HandleResult::Continue
         }
         (KeyCode::PageUp, _) => {
+            app.selection = None;
+            app.selection_drag_start = None;
             app.scroll_up(constants::SCROLL_LINES_PAGE);
             super::HandleResult::Continue
         }
         (KeyCode::PageDown, _) => {
+            app.selection = None;
+            app.selection_drag_start = None;
             app.scroll_down(constants::SCROLL_LINES_PAGE);
             super::HandleResult::Continue
         }
         (KeyCode::Home, _) => {
+            app.selection = None;
+            app.selection_drag_start = None;
             app.materialize_scroll();
             app.scroll = ScrollPosition::Line(0);
             super::HandleResult::Continue
         }
         (KeyCode::End, _) => {
+            app.selection = None;
+            app.selection_drag_start = None;
             app.scroll = ScrollPosition::Bottom;
             super::HandleResult::Continue
         }
