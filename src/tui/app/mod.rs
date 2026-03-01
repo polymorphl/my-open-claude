@@ -4,7 +4,7 @@ mod messages;
 
 use crate::core::commands::ResolvedCommand;
 use crate::core::history::ConversationMeta;
-use crate::core::llm::{ConfirmState, TokenUsage};
+use crate::core::llm::{ConfirmState, TokenUsage, undo};
 use crate::core::models::ModelInfo;
 use crate::core::templates::CustomTemplate;
 use crate::core::workspace::Workspace;
@@ -205,6 +205,8 @@ pub struct App {
     pub command_form_popup: Option<CommandFormState>,
     /// Delete command popup.
     pub delete_command_popup: Option<DeleteCommandState>,
+    /// Shared undo stack for reverting file modifications made by Write/Edit tools.
+    pub undo_stack: undo::SharedUndoStack,
 }
 
 impl App {
@@ -280,6 +282,7 @@ impl App {
             templates_load_error,
             command_form_popup: None,
             delete_command_popup: None,
+            undo_stack: undo::new_shared(),
         }
     }
 

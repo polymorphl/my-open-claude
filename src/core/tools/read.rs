@@ -53,6 +53,10 @@ impl super::Tool for ReadTool {
         Some(super::MAX_OUTPUT_LARGE)
     }
 
+    fn is_read_only(&self) -> bool {
+        true
+    }
+
     fn args_preview(&self, args: &Value) -> String {
         let path = str_arg(args, "file_path");
         let start = args.get("start_line").and_then(|v| v.as_u64());

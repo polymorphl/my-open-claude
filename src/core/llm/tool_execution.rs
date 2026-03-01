@@ -8,8 +8,14 @@ use crate::core::tools;
 use super::ChatError;
 use super::ChatResult;
 use super::ConfirmState;
+use super::undo;
+
+/// Tool names whose file_path argument should be captured for undo before execution.
+const UNDO_CAPTURE_TOOLS: &[&str] = &["Write", "Edit"];
 
 const ASK_MODE_DISABLED: &str = "Ask mode: file modification and command execution are disabled. Use Read, Grep, ListDir, and Glob tools to explore, then respond with an explanation.";
+
+const INIT_FILE_ALREADY_WRITTEN: &str = "Already written this session. Do not call Write again. Provide your brief summary to the user now.";
 
 /// Truncate a tool result string to the given max bytes, appending a notice.
 pub(crate) fn truncate_tool_output(output: String, max_bytes: usize) -> String {
@@ -85,6 +91,59 @@ fn execute_bash_tool(
         mode: mode.to_string(),
         tools: ctx.tools_defs.to_vec(),
         command: command.to_string(),
+        undo_stack: ctx.undo_stack.clone(),
+    })
+}
+
+/// Result of executing a read-only tool call (pure, no side effects on shared state).
+pub(super) struct ReadOnlyToolResult {
+    pub tool_call_id: String,
+    pub log_line: String,
+    pub content: String,
+}
+
+/// Execute a single read-only tool call without mutating shared state.
+/// Returns the result components to be appended by the caller.
+/// Only valid for read-only tools (no confirmation, no init file protection).
+pub(super) fn execute_read_only_tool_call(
+    tool_call: &Value,
+    tools_list: &[Box<dyn tools::Tool>],
+    mode: &str,
+) -> Result<ReadOnlyToolResult, ChatError> {
+    let id = tool_call["id"].as_str().unwrap_or_default().to_string();
+    let function = &tool_call["function"];
+    let name = function["name"].as_str().unwrap_or_default();
+    let args_str = function["arguments"].as_str().unwrap_or("{}");
+
+    let args: Value = serde_json::from_str(args_str).map_err(|e| ChatError::ToolArgs {
+        tool: name.to_string(),
+        source: e,
+    })?;
+
+    let tool_opt = tools_list.iter().find(|t| t.name() == name);
+    let args_preview = tool_opt.map(|t| t.args_preview(&args)).unwrap_or_default();
+    let log_line = format!("→ {}: {}", name, args_preview);
+
+    let result = match tool_opt {
+        Some(tool) => {
+            if is_ask_mode(mode) && tool.disabled_in_ask_mode() {
+                ASK_MODE_DISABLED.to_string()
+            } else {
+                tool_result_string(tool.execute(&args), name)
+            }
+        }
+        None => format!("Error: unknown tool '{}'", name),
+    };
+
+    let result = match tool_opt.and_then(|t| t.output_limit()) {
+        Some(limit) => truncate_tool_output(result, limit),
+        None => result,
+    };
+
+    Ok(ReadOnlyToolResult {
+        tool_call_id: id,
+        log_line,
+        content: result,
     })
 }
 
@@ -97,6 +156,10 @@ pub(super) struct ToolCallContext<'a> {
     pub on_progress: Option<&'a (dyn Fn(&str) + Send + Sync)>,
     /// When set, blocks repeated Write to AGENT.md/AGENTS.md to prevent infinite loops.
     pub init_file_written: Option<&'a mut bool>,
+    /// When set, captures file state before Write/Edit for undo support.
+    pub undo_batch: Option<&'a mut undo::UndoBatch>,
+    /// Shared undo stack for file modifications. Passed through to resumed chats.
+    pub undo_stack: Option<undo::SharedUndoStack>,
 }
 
 /// Execute a single tool call. Returns `Some(ChatResult::NeedsConfirmation)` if destructive and needs confirmation.
@@ -129,6 +192,14 @@ pub(super) fn execute_tool_call(
 
     let tool_opt = tools_list.iter().find(|t| t.name() == name);
 
+    // Capture file state before Write/Edit for undo support.
+    if UNDO_CAPTURE_TOOLS.contains(&name)
+        && let Some(file_path) = args.get("file_path").and_then(|v| v.as_str())
+        && let Some(ref mut batch) = ctx.undo_batch
+    {
+        batch.capture(file_path);
+    }
+
     let result = match tool_opt {
         Some(tool) => {
             if is_ask_mode(mode) && tool.disabled_in_ask_mode() {
@@ -138,11 +209,10 @@ pub(super) fn execute_tool_call(
             {
                 if let Some(ref mut written) = ctx.init_file_written {
                     if **written {
-                        let synthetic = "Already written this session. Do not call Write again. Provide your brief summary to the user now.";
                         std::sync::Arc::make_mut(ctx.messages).push(json!({
                             "role": "tool",
                             "tool_call_id": id,
-                            "content": synthetic
+                            "content": INIT_FILE_ALREADY_WRITTEN
                         }));
                         return Ok(None);
                     }

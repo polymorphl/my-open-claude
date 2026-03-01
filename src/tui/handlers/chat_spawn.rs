@@ -56,6 +56,7 @@ where
 }
 
 /// Spawn a new chat request. Returns PendingChat with channels for progress, stream, and result.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_chat(
     rt: &Arc<Runtime>,
     config: Arc<Config>,
@@ -64,6 +65,7 @@ pub fn spawn_chat(
     prompt: String,
     mode: String,
     prev_messages: Option<Vec<Value>>,
+    undo_stack: Option<llm::undo::SharedUndoStack>,
 ) -> PendingChat {
     let context_length = crate::core::models::resolve_context_length(&model_id);
 
@@ -80,6 +82,7 @@ pub fn spawn_chat(
             workspace: &workspace,
             tools_list: crate::core::tools::all(),
             tools_defs: crate::core::tools::definitions(),
+            undo_stack,
         }));
         let _ = result_tx.send(result);
     })
