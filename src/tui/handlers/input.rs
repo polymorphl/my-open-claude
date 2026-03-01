@@ -9,7 +9,6 @@ use tokio::runtime::Runtime;
 use crate::core::commands::{self, ResolvedCommand};
 use crate::core::config::Config;
 use crate::core::templates;
-use crate::core::workspace;
 
 use super::super::app::{App, ScrollPosition};
 use super::super::constants::{self, SUGGESTIONS};
@@ -101,6 +100,14 @@ pub(crate) fn handle_main_input(
                 "delete-command" => {
                     app.open_delete_command_popup();
                 }
+                "undo" => {
+                    let result = app.undo_stack.lock().ok().and_then(|mut s| s.undo_last());
+                    let msg = match result {
+                        Some(r) => r.to_string(),
+                        None => "Nothing to undo.".to_string(),
+                    };
+                    app.push_tool_log(msg);
+                }
                 _ => {
                     let prefix = templates::expand_cwd(&cmd.prompt_prefix, &app.workspace.root);
                     app.input = if rest.is_empty() {
@@ -170,11 +177,12 @@ pub(crate) fn handle_main_input(
                 let pc = chat_spawn::spawn_chat(
                     rt,
                     Arc::clone(config),
-                    workspace::detect(),
+                    app.workspace.clone(),
                     model_id,
                     input,
                     mode,
                     prev_messages,
+                    Some(app.undo_stack.clone()),
                 );
                 app.is_streaming = true;
                 *pending_chat = Some(pc);

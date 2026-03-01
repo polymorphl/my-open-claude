@@ -81,6 +81,7 @@ pub async fn run_single_prompt(
         workspace,
         tools_list: core::tools::all(),
         tools_defs: core::tools::definitions(),
+        undo_stack: None,
     })
     .await?;
 

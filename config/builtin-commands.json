@@ -76,5 +76,11 @@
     "description": "Delete one or more custom commands",
     "prompt_prefix": "",
     "mode": "Ask"
+  },
+  {
+    "name": "undo",
+    "description": "Undo the last batch of file modifications",
+    "prompt_prefix": "",
+    "mode": "Build"
   }
 ]

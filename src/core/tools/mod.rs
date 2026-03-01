@@ -82,6 +82,11 @@ pub trait Tool: Send + Sync {
         false
     }
 
+    /// Whether this tool is read-only (no side effects). Read-only tools can run in parallel.
+    fn is_read_only(&self) -> bool {
+        false
+    }
+
     /// Optional: may require user confirmation (e.g. destructive Bash command). Default: false.
     fn may_need_confirmation(&self, args: &Value) -> bool {
         let _ = args;
@@ -134,6 +139,26 @@ mod tests {
     fn str_arg_missing_returns_empty() {
         let args = serde_json::json!({"other": "x"});
         assert_eq!(str_arg(&args, "path"), "");
+    }
+
+    #[test]
+    fn read_only_tools() {
+        let tools = init_tools();
+        for tool in &tools {
+            match tool.name() {
+                "Read" | "Grep" | "ListDir" | "Glob" => {
+                    assert!(tool.is_read_only(), "{} should be read-only", tool.name());
+                }
+                "Bash" | "Write" | "Edit" => {
+                    assert!(
+                        !tool.is_read_only(),
+                        "{} should NOT be read-only",
+                        tool.name()
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     #[test]

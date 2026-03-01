@@ -49,6 +49,10 @@ impl super::Tool for ListDirTool {
         Some(super::MAX_OUTPUT_SMALL)
     }
 
+    fn is_read_only(&self) -> bool {
+        true
+    }
+
     fn args_preview(&self, args: &Value) -> String {
         str_arg(args, "path")
     }

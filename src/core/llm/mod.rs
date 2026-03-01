@@ -5,6 +5,7 @@ pub(crate) mod context;
 mod error;
 mod stream;
 mod tool_execution;
+pub mod undo;
 
 use async_openai::Client;
 use serde_json::{Value, json};
@@ -18,8 +19,6 @@ use crate::core::workspace::Workspace;
 
 pub use error::{ChatError, map_api_error};
 pub use stream::TokenUsage;
-#[allow(unused_imports)]
-pub use tool_execution::is_ask_mode;
 
 /// Result of a chat turn. Either complete, or needs user confirmation for a destructive command.
 #[derive(Debug)]
@@ -46,6 +45,7 @@ pub struct ConfirmState {
     pub(crate) mode: String,
     pub(crate) tools: Vec<Value>,
     pub(crate) command: String,
+    pub(crate) undo_stack: Option<undo::SharedUndoStack>,
 }
 
 /// Callback for progress updates during chat (e.g. "Calling API...", "→ Bash: ls").
@@ -91,6 +91,9 @@ pub struct ChatRequest<'a> {
     pub tools_list: &'a [Box<dyn tools::Tool>],
     /// Tool definitions for the API (must match tools_list order).
     pub tools_defs: &'a [Value],
+    /// Shared undo stack for file modifications. When set, Write/Edit tool calls capture
+    /// original file content before modification, enabling `/undo`.
+    pub undo_stack: Option<undo::SharedUndoStack>,
 }
 
 /// Run an agent loop that:
@@ -158,6 +161,7 @@ pub async fn chat(req: ChatRequest<'_>) -> Result<ChatResult, ChatError> {
             messages: &mut messages,
             tool_log: &mut tool_log,
             mode: req.mode,
+            undo_stack: req.undo_stack,
         },
         agent_loop::AgentLoopCallbacks {
             confirm_destructive: &confirm_destructive,
@@ -219,6 +223,7 @@ pub async fn chat_resume(
             messages: &mut messages,
             tool_log: &mut tool_log,
             mode: &state.mode,
+            undo_stack: state.undo_stack,
         },
         agent_loop::AgentLoopCallbacks {
             confirm_destructive: &None,
