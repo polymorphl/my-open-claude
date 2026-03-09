@@ -16,11 +16,12 @@ const IGNORED_DIRS: &[&str] = &[
     ".cache",
 ];
 
+/// Returns `true` if the given name matches one of the always-ignored directory names.
+pub fn is_ignored_name(name: &str) -> bool {
+    IGNORED_DIRS.contains(&name)
+}
+
 /// Returns `true` if this directory entry should be pruned from traversal.
 pub fn is_ignored(entry: &walkdir::DirEntry) -> bool {
-    entry.file_type().is_dir()
-        && entry
-            .file_name()
-            .to_str()
-            .is_some_and(|n| IGNORED_DIRS.contains(&n))
+    entry.file_type().is_dir() && entry.file_name().to_str().is_some_and(is_ignored_name)
 }

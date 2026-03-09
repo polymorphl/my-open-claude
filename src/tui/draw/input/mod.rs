@@ -205,7 +205,10 @@ fn wrapped_lines(text: &str, width: u16) -> Vec<String> {
 }
 
 fn input_has_focus(app: &App) -> bool {
-    app.confirm_popup.is_none() && app.model_selector.is_none() && app.history_selector.is_none()
+    app.confirm_popup.is_none()
+        && app.model_selector.is_none()
+        && app.history_selector.is_none()
+        && app.file_picker.is_none()
 }
 
 fn draw_input_block(f: &mut Frame, app: &mut App, input_area: Rect) {

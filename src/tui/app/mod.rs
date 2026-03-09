@@ -1,6 +1,8 @@
 //! TUI application state: messages, input, scroll, suggestions.
 
+pub mod file_picker;
 mod messages;
+pub use file_picker::FilePickerState;
 
 use crate::core::commands::ResolvedCommand;
 use crate::core::history::ConversationMeta;
@@ -207,6 +209,8 @@ pub struct App {
     pub delete_command_popup: Option<DeleteCommandState>,
     /// Shared undo stack for reverting file modifications made by Write/Edit tools.
     pub undo_stack: undo::SharedUndoStack,
+    /// When set, show the file picker popup (triggered by `@` in input).
+    pub file_picker: Option<FilePickerState>,
 }
 
 impl App {
@@ -283,6 +287,7 @@ impl App {
             command_form_popup: None,
             delete_command_popup: None,
             undo_stack: undo::new_shared(),
+            file_picker: None,
         }
     }
 
