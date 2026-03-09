@@ -1,6 +1,7 @@
 //! Agent loop: chat with tool calling, streaming, and destructive command confirmation.
 
 mod agent_loop;
+pub mod at_refs;
 pub(crate) mod context;
 mod error;
 mod stream;

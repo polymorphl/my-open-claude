@@ -10,7 +10,7 @@ use crate::core::commands::{self, ResolvedCommand};
 use crate::core::config::Config;
 use crate::core::templates;
 
-use super::super::app::{App, ScrollPosition};
+use super::super::app::{App, FilePickerState, ScrollPosition};
 use super::super::constants::{self, SUGGESTIONS};
 use super::PendingChat;
 use super::chat_spawn;
@@ -281,6 +281,18 @@ pub(crate) fn handle_main_input(
         (KeyCode::Char(c), mods) => {
             if mods.contains(KeyModifiers::ALT) {
                 return super::HandleResult::Continue;
+            }
+            // `@` at start of input or after whitespace opens the file picker.
+            if c == '@' {
+                let pos = app.input_cursor;
+                let preceded_by_ws = pos == 0 || app.input[..pos].ends_with(char::is_whitespace);
+                if preceded_by_ws {
+                    app.input.insert(pos, '@');
+                    app.input_cursor = pos + 1;
+                    let root = app.workspace.root.clone();
+                    app.file_picker = Some(FilePickerState::open(root.clone(), root, pos));
+                    return super::HandleResult::Continue;
+                }
             }
             let pos = app.input_cursor.min(app.input.len());
             // Only insert if pos is a valid char boundary (String::insert panics otherwise)

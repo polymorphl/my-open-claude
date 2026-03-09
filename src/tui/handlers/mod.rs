@@ -4,6 +4,7 @@ mod chat_spawn;
 mod command_form;
 mod confirm;
 mod delete_command;
+mod file_picker;
 mod history_selector;
 mod input;
 mod model_selector;
@@ -84,6 +85,7 @@ pub(crate) fn would_esc_start_meta_sequence(
         && app.history_selector.is_none()
         && app.command_form_popup.is_none()
         && app.delete_command_popup.is_none()
+        && app.file_picker.is_none()
         && !app.input.starts_with('/')
         && pending_chat.is_none()
 }
@@ -102,6 +104,7 @@ pub fn handle_mouse(mouse: crossterm::event::MouseEvent, app: &mut App) -> Handl
         && app.history_selector.is_none()
         && app.command_form_popup.is_none()
         && app.delete_command_popup.is_none()
+        && app.file_picker.is_none()
     {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
@@ -261,6 +264,12 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
         }
     }
 
+    // File picker: intercept all keys when open.
+    if app.file_picker.is_some() {
+        file_picker::handle_file_picker(key.code, key.modifiers, app);
+        return HandleResult::Continue;
+    }
+
     // Copy: ⌘C on macOS, Ctrl+Shift+C on Linux/Windows.
     if is_copy_shortcut(key.code, key.modifiers)
         && app.confirm_popup.is_none()
@@ -268,6 +277,7 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
         && app.history_selector.is_none()
         && app.command_form_popup.is_none()
         && app.delete_command_popup.is_none()
+        && app.file_picker.is_none()
     {
         if selection::try_copy_selection(app) {
             // Selection copied
@@ -287,6 +297,7 @@ pub fn handle_key(key: crossterm::event::KeyEvent, ctx: HandleKeyContext<'_>) ->
         && app.history_selector.is_none()
         && app.command_form_popup.is_none()
         && app.delete_command_popup.is_none()
+        && app.file_picker.is_none()
     {
         if app.input.starts_with('/') {
             app.input.clear();

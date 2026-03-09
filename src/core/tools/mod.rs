@@ -2,7 +2,7 @@ mod bash;
 mod edit;
 mod glob_tool;
 mod grep;
-mod ignore;
+pub mod ignore;
 mod list_dir;
 mod read;
 mod write;

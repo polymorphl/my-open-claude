@@ -70,10 +70,11 @@ pub fn spawn_chat(
     let context_length = crate::core::models::resolve_context_length(&model_id);
 
     spawn_with_callbacks(rt, move |rt_clone, options, result_tx| {
+        let resolved_prompt = crate::core::llm::at_refs::resolve_at_refs(&prompt, &workspace.root);
         let result = rt_clone.block_on(llm::chat(llm::ChatRequest {
             config: config.as_ref(),
             model: &model_id,
-            prompt: &prompt,
+            prompt: &resolved_prompt,
             mode: &mode,
             context_length,
             confirm_destructive: None,

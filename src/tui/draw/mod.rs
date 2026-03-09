@@ -2,6 +2,7 @@
 
 mod command_form_popup;
 mod delete_command_popup;
+mod file_picker_popup;
 mod header;
 mod history;
 mod history_selector_popup;
@@ -83,6 +84,9 @@ pub(super) fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     }
     if let Some(ref mut state) = app.delete_command_popup {
         delete_command_popup::draw_delete_command_popup(f, area, state, &app.custom_templates);
+    }
+    if let Some(ref mut picker) = app.file_picker {
+        file_picker_popup::draw_file_picker_popup(f, area, picker);
     }
 
     // Toast: top right, below header (y=2). Opaque background so it's visible over history.
